@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.db
+*.db-journal
+data/
+bench/results/*
+!bench/results/.gitkeep
+!bench/results/summary.csv
+!bench/results/*.md
+.DS_Store
+.env
