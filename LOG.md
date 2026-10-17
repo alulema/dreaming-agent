@@ -285,3 +285,36 @@ Todas son **flags de configuración** (v1 sigue siendo reproducible con `RETRIEV
 - **[HALLAZGO]** Fugas de ejemplos que el grounding no atrapa (sustantivos comunes): "teacher" ×3, "bakery" ×6, "cat" ×9. Confirma el límite anotado en v2.
 - **[HALLAZGO]** El Dream de 3B *fusiona la basura con hechos reales*: "allergic to peanuts and goes to the swimming pool", "took an online course in UX design and learned to whistle a new song", "moved to the Estudio Faro", "friends named Kiwi and Ramón". Memoria −45 % frente a C, exactitud −9 puntos.
 - **[FALLO]** 5 timeouts del Consolidator de 3B (generaciones de >60 s sin cerrar el JSON; el Mac estaba despierto). El fallback (no aplicar ops en ese cluster) funcionó.
+
+## 2026-10-17 10:00 — Fase 5: selector de modo, Writer en segundo plano, contenedores
+
+- **[DECISIÓN] El demo muestra LightMem con un selector LightMem / RAG / Comparar.** El resultado principal del estudio es que el RAG ingenuo gana; esconderlo en el demo sería deshonesto. `POST /chat` acepta `mode`; en `compare` corre primero el RAG (1 llamada, solo lectura) y luego LightMem, y la UI los muestra lado a lado.
+- **[DECISIÓN] `Agent.chat` se partió en `answer` + `learn`.** El Writer (la llamada más larga: genera JSON con varias entradas) corre **después** de responder, como `BackgroundTask` serializada con un lock; la UI consulta `GET /learned/{id}` y marca el turno "aprendiendo…" hasta que termina. El RAG también indexa el turno (embedding) en `learn`. El benchmark sigue usando `chat()` (síncrono), así que sus números no cambian.
+- `Dockerfile` (app, python:3.12-slim, SQLite en `/tmp`), `Dockerfile.ollama` (modelos horneados con `ollama pull` en el build; `KEEP_ALIVE=-1`, 2 modelos residentes), `docker-compose.yml` con los límites del pod (Ollama 1.75 vCPU / 3.5 GB + app 0.25 / 512 MB), workflow de GitHub Actions (tests → build → push a GHCR con `:latest` y `:sha`).
+
+## 2026-10-17 10:30 — Fase 5: latencia en CPU (2 vCPU / 4 GB, contenedor `ollama/ollama` limitado)
+
+- **[DESAFÍO] ⭐ Ollama dentro de un contenedor con cuota de CPU es ~15× más lento de lo esperado.** Primera medición con 3B: Controller 87–180 s, Writer en timeout (180 s) en 4 de 10 turnos; con 1.5B, Controller ~50 s. Causa: `nproc` dentro del contenedor devuelve **10** (los núcleos del host), llama.cpp lanza 10 hilos y la cuota CFS de 2 CPUs los estrangula a todos (contención y esperas en cada barrera entre capas). Con `num_thread=2`: la misma llamada pasa de **91 s a 4 s**. Arreglo: `LLM_NUM_THREAD` (opción `num_thread` en cada petición de chat y embed), `2` en compose y en la imagen. Debe coincidir con las vCPU del sidecar: va en el manifest.
+- **[HALLAZGO] En CPU la latencia es generación, no lectura del prompt.** 1.5B con 2 hilos: prompt a ~250–500 tok/s (0.2 s si está en caché), generación a **~6 tok/s**. El `format` con JSON Schema no cuesta nada medible frente a `json` o texto libre (6.1 / 6.2 / 6.7 s para el mismo Controller). Cada módulo cuesta lo que escribe: Controller ~40 tokens, Writer 150–300, Responder lo que se extienda.
+- **[RESULTADO] Conversación de desarrollo de 10 turnos (Lucía), v2, 2 vCPU / 4 GB, `num_thread=2`:**
+
+  | Modelo | Respuesta p50 (Controller → Responder) | Controller | Writer (en segundo plano) |
+  |---|---|---|---|
+  | qwen2.5:3b | ~75 s (29–193 s) | 18–35 s | ~100 s |
+  | qwen2.5:1.5b | ~40 s (16–63 s) | 11–18 s | ~43 s |
+
+  Ambos recuerdan bien el perro y la mudanza; el 1.5B contesta con más relleno ("¿Cómo puedo ayudarte con él?"). Con la Mac M1 (núcleos rápidos); una vCPU de nube típica será igual o más lenta.
+
+- **[DECISIÓN] (Alexis) Demo con 3B y pedir 4 vCPU a la infra**, en vez de bajar a 1.5B o simplificar el pipeline. Medido con 4 vCPU y `num_thread=4`, misma conversación:
+
+  | qwen2.5:3b | Respuesta p50 | Controller | Writer (en segundo plano) | Memoria del contenedor |
+  |---|---|---|---|---|
+  | 2 vCPU | ~75 s | 18–35 s | ~100 s | ~3.0 GiB |
+  | 4 vCPU | **~30 s** (16–67 s) | 11–18 s | ~52 s | **3.8 / 4 GiB** |
+
+  La memoria queda justa con 4 GiB (3B + bge-m3 + buffers de 4 hilos): se piden **6 GiB**. El primer turno suma ~30 s de carga de modelos.
+- **[FALLO]** Una medición intermedia murió con OOM (`llama-server ... signal: killed`, HTTP 500): el 1.5B de la prueba anterior seguía cargado junto al 3B y bge-m3, y cambiar `num_thread` obliga a recargar el modelo. En la imagen real solo hay 2 modelos horneados y `OLLAMA_MAX_LOADED_MODELS=2`.
+- **[DESAFÍO] UI:** el botón flotante "Acerca de" de `demo-panel.js` tapaba la caja de mensaje (abajo a la izquierda). Arreglo: `trigger: "custom"` y botón propio en la cabecera, visible solo si el widget cargó. El diagrama Mermaid en horizontal salía enredado en el drawer angosto: se pasó a vertical con la memoria agrupada en un subgraph.
+- **[RESULTADO] Prueba en Chrome** (Ollama nativo, 3B): modo LightMem con el Writer en segundo plano ("+3 MTM" llega después de la respuesta); modo Comparar: LightMem 4.9 s / 3 llamadas frente a RAG 1.3 s / 1 llamada, ambos correctos; panel Acerca de con sus 4 pestañas.
+- Teardown: la UI traduce errores de red y 401/403/502/503/504 sin `detail` (los del gateway) en "la sesión expiró, recarga la página"; los 502/504 propios de la app traen `detail` y se muestran tal cual.
+- **[RESULTADO] End-to-end con `docker compose`** (imágenes construidas localmente, Ollama 4 vCPU / 5 GB, app 0.25 / 512 MB): `/health` ok con los dos modelos horneados; primer turno LightMem 70 s (incluye la carga de los modelos), Writer en segundo plano 65 s (3 hechos correctos); Comparar 64 s, ambos correctos; Dream de 1 cluster de 3 hechos: 70 s. Memoria de Ollama: 3.6 GiB. Imágenes: app 262 MB, Ollama **7.3 GB** (la base `ollama/ollama` trae CUDA; ~3.1 GB son modelos). Adelgazarla queda como mejora opcional.

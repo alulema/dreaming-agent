@@ -79,7 +79,8 @@ async def main() -> None:
     if args:
         settings.llm_model = args[0]
     llm = OllamaClient(settings.ollama_url, settings.llm_model, format_mode=settings.llm_format,
-                       seed=settings.llm_seed, timeout_s=settings.llm_timeout_s)
+                       seed=settings.llm_seed, timeout_s=settings.llm_timeout_s,
+                       num_thread=settings.llm_num_thread or None)
     store = SQLiteStore(settings.db_path)
     embedder = Embedder(llm, settings.embed_model)
     agent = Agent(llm, embedder, store, settings)

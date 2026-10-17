@@ -92,7 +92,8 @@ async def run_one(condition: str, model: str, run: int, args, sessions, question
                         embed_model=args.embed_model)
     llm = OllamaClient(settings.ollama_url, model, format_mode=args.llm_format,
                        temperature=settings.llm_temperature, seed=settings.llm_seed,
-                       timeout_s=settings.llm_timeout_s, json_retries=settings.llm_json_retries)
+                       timeout_s=settings.llm_timeout_s, json_retries=settings.llm_json_retries,
+                       num_thread=settings.llm_num_thread or None)
     store = SQLiteStore(settings.db_path)
     strategy = make_strategy(condition, llm, Embedder(llm, settings.embed_model), store, settings)
     out = (RESULTS / f"{run_id}.jsonl").open("w", encoding="utf-8")

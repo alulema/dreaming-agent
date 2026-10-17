@@ -93,6 +93,15 @@
   .warnbox { color: var(--warn); font-size: 12.5px; }
   details > summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
   .rej { font-size: 12.5px; padding: 4px 0; border-top: 1px dashed var(--border); }
+
+  .modes { display: inline-flex; border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+  .modes button { border: 0; border-radius: 0; padding: 6px 10px; background: var(--card); }
+  .modes button + button { border-left: 1px solid var(--border); }
+  .modes button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 100%; }
+  @media (max-width: 600px) { .pair { grid-template-columns: 1fr; } }
+  .pair .msg { max-width: 100%; }
+  .tag { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--accent); display: block; margin-bottom: 2px; }
 </style>
 </head>
 <body>
@@ -100,8 +109,14 @@
   <h1>🌙 <span data-i18n="title"></span></h1>
   <label class="mono" style="font-size:12px;color:var(--muted)" for="model" data-i18n="model"></label>
   <select id="model" aria-label="model"></select>
+  <div class="modes" role="group" aria-label="mode">
+    <button type="button" data-mode="lightmem" data-i18n-title="modeLightmemTip">LightMem</button>
+    <button type="button" data-mode="rag" data-i18n-title="modeRagTip">RAG</button>
+    <button type="button" data-mode="compare" data-i18n="modeCompare" data-i18n-title="modeCompareTip"></button>
+  </div>
   <button id="newSession" data-i18n="newSession"></button>
   <button id="dream" class="primary" data-i18n-title="dreamTip">🌙 Dream</button>
+  <button id="about" hidden data-i18n="about"></button>
 </header>
 <div class="banner"><span data-i18n="banner"></span> · <a href="https://arxiv.org/abs/2604.07798" target="_blank" rel="noopener">arXiv:2604.07798</a></div>
 <main>
@@ -125,7 +140,7 @@
 <script>
 const I18N = {
   es: {
-    title: "El agente que sueña", model: "modelo", newSession: "Nueva sesión", send: "Enviar",
+    title: "El agente que sueña", model: "modelo", newSession: "Nueva sesión", send: "Enviar", about: "Acerca de",
     dreamTip: "Consolidación offline: fusiona, actualiza, promueve u olvida recuerdos",
     dreaming: "soñando", dreamsEmpty: "Aún no hay sueños. Conversa un poco y pulsa 🌙 Dream.",
     clusters: "grupos", proposed: "propuestas", applied: "aplicadas", rejected: "rechazadas",
@@ -138,9 +153,15 @@ const I18N = {
     fallback: "fallback", repairs: "reparaciones", newEntry: "nueva", reinforced: "reforzada",
     stmEmpty: "Sin turnos en esta sesión.", mtmEmpty: "Aún no hay hechos en MTM.", ltmEmpty: "LTM vacía: se llena con el Dream.",
     access: "accesos", turns: "turnos", newSessionDone: "Nueva sesión: la STM se vació; MTM y LTM se conservan.",
+    modeCompare: "Comparar", learning: "aprendiendo…", learnFailed: "el Writer falló",
+    modeLightmemTip: "Responde con la memoria LightMem: Controller → recuperación → Selector, sobre hechos extraídos y consolidados",
+    modeRagTip: "Responde con RAG ingenuo: las 8 frases tuyas más parecidas, sin reescribir nada",
+    modeCompareTip: "Responde de las dos formas, lado a lado",
+    rag: "RAG ingenuo", ragRetrieved: "frases tuyas recuperadas",
+    gone: "El demo no responde: puede que la sesión haya expirado. Recarga la página para empezar de nuevo (la memoria se reinicia).",
   },
   en: {
-    title: "The dreaming agent", model: "model", newSession: "New session", send: "Send",
+    title: "The dreaming agent", model: "model", newSession: "New session", send: "Send", about: "About",
     dreamTip: "Offline consolidation: merges, updates, promotes or forgets memories",
     dreaming: "dreaming", dreamsEmpty: "No dreams yet. Chat a bit, then press 🌙 Dream.",
     clusters: "clusters", proposed: "proposed", applied: "applied", rejected: "rejected",
@@ -153,6 +174,12 @@ const I18N = {
     fallback: "fallback", repairs: "repairs", newEntry: "new", reinforced: "reinforced",
     stmEmpty: "No turns in this session.", mtmEmpty: "No MTM facts yet.", ltmEmpty: "LTM is empty: the Dream fills it.",
     access: "accesses", turns: "turns", newSessionDone: "New session: STM cleared; MTM and LTM are kept.",
+    modeCompare: "Compare", learning: "learning…", learnFailed: "the Writer failed",
+    modeLightmemTip: "Answer with LightMem memory: Controller → retrieval → Selector, over extracted and consolidated facts",
+    modeRagTip: "Answer with naive RAG: your 8 most similar messages, nothing rewritten",
+    modeCompareTip: "Answer both ways, side by side",
+    rag: "Naive RAG", ragRetrieved: "your messages retrieved",
+    gone: "The demo is not responding: the session may have expired. Reload the page to start over (memory resets).",
   },
 };
 const lang = (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en";
@@ -172,11 +199,19 @@ const store = {
   get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
 };
+// The demo can be torn down at any moment (idle timeout, max lifetime): a network error or a
+// gateway status means "start over", not a bug to report.
 async function api(path, body) {
-  const r = await fetch(path, body === undefined ? {} : {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+  let r;
+  try {
+    r = await fetch(path, body === undefined ? {} : {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  } catch { throw new Error(T("gone")); }
+  if (!r.ok) {
+    const detail = (await r.json().catch(() => ({}))).detail;  // our own errors carry a detail
+    throw new Error(detail || ([401, 403, 502, 503, 504].includes(r.status) ? T("gone") : `HTTP ${r.status}`));
+  }
   return r.json();
 }
 
@@ -204,6 +239,13 @@ function fmtMs(ms) { return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math
 
 function renderTrace(t) {
   const box = el("div", { className: "trace" });
+  if (t.mode === "rag") {
+    const lines = (t.memory_context || "").split("\n").filter(Boolean);
+    box.append(el("div", {}, el("h4", {}, `${T("rag")} · ${T("ragRetrieved")}: ${lines.length}`),
+      lines.length ? lines.map((l) => el("div", { className: "cand kept" }, l)) : el("div", {}, T("nothing"))));
+    appendLatency(box, t);
+    return box;
+  }
   const c = t.controller;
   box.append(el("div", {}, el("h4", {}, T("controller")),
     c.needs_memory ? el("div", {}, "needs_memory → ", el("code", {}, JSON.stringify(c.queries)), ` · ${c.tiers.join("+")}`)
@@ -222,11 +264,17 @@ function renderTrace(t) {
 
   const w = t.writer;
   box.append(el("div", {}, el("h4", {}, T("writer")),
+    !w ? el("div", {}, T("learning")) : w.error ? el("div", { className: "warnbox" }, w.error) :
     w.skipped ? el("div", {}, T("skipped")) :
     [...w.entries.map((e) => el("div", {}, `+ ${e.text} `, el("span", { className: "mono" }, e.topics.join(", ")))),
      ...w.reinforced.map((r) => el("div", {}, `= ${r.text} (${T("reinforced")}, ${r.score})`)),
      ...(w.entries.length + w.reinforced.length ? [] : [el("div", {}, T("nothing"))])]));
 
+  appendLatency(box, t);
+  return box;
+}
+
+function appendLatency(box, t) {
   const lat = t.latency_ms;
   const stages = ["controller", "retriever", "selector", "responder", "writer"].filter((k) => k in lat);
   const max = Math.max(...stages.map((k) => lat[k]), 1);
@@ -237,26 +285,61 @@ function renderTrace(t) {
       el("span", { className: "mono" }, fmtMs(lat[k])),
     ]))));
   box.append(el("div", { className: "mono", style: "color:var(--muted)" },
-    `${t.model} · prompts ${Object.entries(t.prompt_versions).map(([k, v]) => `${k}@${v}`).join(" ")}`));
-  return box;
+    `${t.model}${t.prompt_versions ? " · prompts " + Object.entries(t.prompt_versions).map(([k, v]) => `${k}@${v}`).join(" ") : ""}`));
 }
 
-function addReply(res) {
-  const t = res.trace;
-  const m = addMsg("bot", res.reply);
+function replyBubble(reply, t, label) {
+  const m = el("div", { className: "msg bot" }, label ? el("span", { className: "tag" }, label) : null, reply);
   const meta = el("div", { className: "meta" }, `${fmtMs(t.latency_ms.reply)} · ${t.llm_calls} ${T("calls")}`);
   if (t.fallbacks.length) meta.append(el("span", { className: "badge warn" }, `${T("fallback")}: ${t.fallbacks.join(", ")}`));
   if (Object.keys(t.repairs).length) meta.append(el("span", { className: "badge warn" }, `${T("repairs")}: ${Object.keys(t.repairs).join(", ")}`));
-  if (t.writer.entries.length) meta.append(el("span", { className: "badge" }, `+${t.writer.entries.length} MTM`));
   let traceBox = null;
   const btn = el("button", { type: "button", textContent: T("trace") });
+  const redraw = () => { if (traceBox) { const n = renderTrace(t); traceBox.replaceWith(n); traceBox = n; } };
   btn.onclick = () => {
     if (traceBox) { traceBox.remove(); traceBox = null; btn.textContent = T("trace"); return; }
     traceBox = renderTrace(t); m.append(traceBox); btn.textContent = T("hideTrace");
   };
   meta.append(btn);
   m.append(meta);
-  freshIds = new Set(t.writer.entries.map((e) => e.id));
+  return { m, meta, redraw };
+}
+
+function addReply(res) {
+  $("#emptyChat")?.remove();
+  const main = replyBubble(res.reply, res.trace, res.rag ? "LightMem" : null);
+  const bubbles = [main];
+  if (res.rag) {
+    const rag = replyBubble(res.rag.reply, res.rag.trace, T("rag"));
+    bubbles.push(rag);
+    $("#log").append(el("div", { className: "pair" }, main.m, rag.m));
+  } else {
+    $("#log").append(main.m);
+  }
+  $("#log").scrollTop = $("#log").scrollHeight;
+  const badge = el("span", { className: "badge" }, T("learning"));
+  main.meta.insertBefore(badge, main.meta.lastChild);
+  waitLearned(res.learn_id).then((learned) => {
+    res.trace.writer = learned.writer || { error: learned.error || T("learnFailed") };
+    if (learned.writer_ms != null) res.trace.latency_ms.writer = learned.writer_ms;
+    const n = learned.writer ? learned.writer.entries.length : 0;
+    badge.textContent = learned.writer ? (n ? `+${n} MTM` : "✓") : `⚠ ${T("learnFailed")}`;
+    if (!learned.writer) badge.classList.add("warn");
+    freshIds = new Set(learned.writer ? learned.writer.entries.map((e) => e.id) : []);
+    bubbles.forEach((b) => b.redraw());
+    refreshMemory();
+  });
+}
+
+async function waitLearned(id) {
+  for (let i = 0; i < 300; i++) {
+    try {
+      const r = await api(`/learned/${id}`);
+      if (r.done) return r;
+    } catch (e) { return { error: e.message }; }
+    await new Promise((ok) => setTimeout(ok, 1000));
+  }
+  return { error: "timeout" };
 }
 
 let dreams = [];
@@ -355,7 +438,7 @@ $("#form").onsubmit = async (ev) => {
   const timer = setInterval(() => { pending.textContent = `${T("thinking")}… ${((performance.now() - t0) / 1000).toFixed(0)} s`; }, 500);
   try {
     await ensureSession();
-    const res = await api("/chat", { session_id: sessionId, message: text });
+    const res = await api("/chat", { session_id: sessionId, message: text, mode });
     pending.remove();
     addReply(res);
     await refreshMemory();
@@ -379,6 +462,15 @@ $("#newSession").onclick = async () => {
   freshIds = new Set();
   await refreshMemory();
 };
+
+let mode = store.get("mode") || "lightmem";
+function setMode(m) {
+  mode = m;
+  store.set("mode", m);
+  for (const b of document.querySelectorAll(".modes button")) b.setAttribute("aria-pressed", b.dataset.mode === m);
+}
+for (const b of document.querySelectorAll(".modes button")) b.onclick = () => setMode(b.dataset.mode);
+setMode(mode);
 
 $("#dream").onclick = async () => {
   const btn = $("#dream"), send = $("#send");
@@ -417,5 +509,79 @@ $("#model").onchange = async (ev) => {
   }
 })();
 </script>
+<script>
+// "About this demo" panel (rendered by demo-panel.js if it loads; purely additive).
+window.DEMO_INFO = {
+  title: "The dreaming agent",
+  titleEs: "El agente que sueña",
+  overview: "A chat agent with three-tier memory (STM → MTM → LTM) and an offline \"dream\" that consolidates it, inspired by LightMem (arXiv:2604.07798). Everything runs locally on a small open model served by Ollama, with no external APIs. The trace shows what every module decided on each turn, and the Dreams tab shows what the dream merged, updated, promoted or forgot. A selector answers with LightMem, with naive RAG, or both side by side, because naive RAG wins the benchmark: 93% vs 58% with the 3B model.",
+  overviewEs: "Un agente conversacional con memoria de tres niveles (STM → MTM → LTM) y un \"sueño\" offline que la consolida, inspirado en LightMem (arXiv:2604.07798). Todo corre en local con un modelo abierto pequeño servido por Ollama, sin APIs externas. La traza muestra qué decidió cada módulo en cada turno, y la pestaña de sueños muestra qué fusionó, actualizó, promovió u olvidó el Dream. Un selector responde con LightMem, con RAG ingenuo o con ambos lado a lado, porque el RAG ingenuo gana el benchmark: 93 % frente a 58 % con el modelo 3B.",
+  architecture: {
+    description: "Online: a Controller decides whether the message carries new information and writes search queries; the Retriever runs cosine search over MTM and LTM; a Selector keeps the relevant facts; the Responder answers with them plus the recent turns (STM). After answering, a Writer extracts atomic facts into MTM in the background. Offline (Dream): entries are clustered, the LLM proposes MERGE / UPDATE / PROMOTE / FORGET, a deterministic validator rejects invented names or numbers, lost current values and unsafe forgets, and the rest is applied in one transaction with soft deletes.",
+    descriptionEs: "Online: un Controller decide si el mensaje trae información nueva y escribe las consultas; el Retriever busca por coseno en MTM y LTM; un Selector se queda con los hechos relevantes; el Responder contesta con ellos más los turnos recientes (STM). Después de responder, un Writer extrae hechos atómicos a MTM en segundo plano. Offline (Dream): se agrupan las entradas, el LLM propone MERGE / UPDATE / PROMOTE / FORGET, un validador determinista rechaza nombres o números inventados, valores vigentes perdidos y olvidos peligrosos, y lo demás se aplica en una transacción con soft-delete.",
+    diagram: `flowchart TB
+  U([User message]) --> C[Controller]
+  C --> R[Retriever]
+  R --> S[Selector]
+  S --> P[Responder]
+  P --> A([Reply])
+  P -. background .-> W[Writer]
+  subgraph M[Memory]
+    STM[(STM)]
+    MTM[(MTM)]
+    LTM[(LTM)]
+  end
+  W --> MTM
+  MTM --> R
+  LTM --> R
+  STM --> P
+  D[Dream] --> MTM
+  D --> LTM`,
+  },
+  infra: [
+    { name: "FastAPI app", role: "Pipeline, memory store and UI (Python 3.12)", roleEs: "Pipeline, memoria y UI (Python 3.12)" },
+    { name: "Ollama", role: "Local inference: qwen2.5:3b-instruct (chat) + bge-m3 (embeddings), baked into the image", roleEs: "Inferencia local: qwen2.5:3b-instruct (chat) + bge-m3 (embeddings), horneados en la imagen" },
+    { name: "SQLite", role: "Ephemeral memory: float32 embeddings, brute-force cosine search", roleEs: "Memoria efímera: embeddings float32, búsqueda coseno por fuerza bruta" },
+  ],
+  sizing: "4 vCPU / 6 GiB, CPU only, qwen2.5:3b (Q4). A LightMem answer takes ~30 s (2-3 model calls at a few tokens/s); the Writer adds ~50 s in the background. Ollama threads are pinned to the CPU quota: unpinned, it is ~15x slower inside a container.",
+  sizingEs: "4 vCPU / 6 GiB, solo CPU, qwen2.5:3b (Q4). Una respuesta de LightMem tarda ~30 s (2-3 llamadas al modelo a pocos tokens/s); el Writer suma ~50 s en segundo plano. Los hilos de Ollama están fijados al límite de CPU: sin fijarlos, dentro de un contenedor es ~15 veces más lento.",
+  design: [
+    "Same small model for every module, with structured output (JSON Schema) plus validation, a retry and a deterministic fallback",
+    "The Writer runs after the reply, in the background: you see the answer first and the learned facts a few seconds later",
+    "The Dream is checked by a deterministic validator: the LLM proposes, plain code decides",
+    "Soft deletes with superseded_by: every consolidation can be traced back to its originals",
+    "Naive RAG is a first-class mode, not a strawman: it is the benchmark's winner",
+  ],
+  designEs: [
+    "El mismo modelo pequeño para todos los módulos, con salida estructurada (JSON Schema), validación, un reintento y fallback determinista",
+    "El Writer corre después de la respuesta, en segundo plano: primero ves la respuesta y unos segundos después lo aprendido",
+    "Un validador determinista revisa el Dream: el LLM propone, el código decide",
+    "Soft-delete con superseded_by: toda consolidación se puede rastrear hasta sus originales",
+    "El RAG ingenuo es un modo de primera clase, no un hombre de paja: es el ganador del benchmark",
+  ],
+  limitations: [
+    "Not a reproduction of the paper: no LoRA fine-tuning and no large API model as Responder",
+    "Slow on CPU: a LightMem turn makes 2-3 model calls before answering; a Dream takes longer",
+    "Small models write memory badly: the Writer and the Dream can merge or distort real facts",
+    "Single user, ephemeral memory: it resets when the session ends. Do not share real personal data",
+  ],
+  limitationsEs: [
+    "No reproduce el paper: sin fine-tuning con LoRA y sin un modelo grande de API como Responder",
+    "Lento en CPU: un turno de LightMem hace 2-3 llamadas al modelo antes de responder; un Dream tarda más",
+    "Los modelos pequeños escriben mal la memoria: el Writer y el Dream pueden mezclar o deformar hechos reales",
+    "Un solo usuario, memoria efímera: se borra al terminar la sesión. No compartas datos personales reales",
+  ],
+  links: { repo: "https://github.com/alulema/dreaming-agent" },
+  trigger: "custom",  // our own header button: the floating one covered the message box
+};
+// Show the header button only once the panel widget has loaded.
+window.addEventListener("load", () => {
+  if (!window.DemoPanel) return;
+  const b = document.getElementById("about");
+  b.hidden = false;
+  b.onclick = () => window.DemoPanel.open();
+});
+</script>
+<script src="https://alexisalulema.com/demo-panel.js" defer></script>
 </body>
 </html>

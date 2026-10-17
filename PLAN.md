@@ -9,8 +9,8 @@ Regla: **no se avanza de fase sin cumplir sus criterios de aceptación.** Cada f
 
 | Tema | Decisión | Razón |
 |---|---|---|
-| Modelos | **Benchmark local** (M1 Pro, 16 GB): `qwen2.5:7b-instruct` y `qwen2.5:3b-instruct`, más `llama3.2:1b` / `qwen2.5:1.5b-instruct` como "tamaño del paper". **Demo público**: 1.5B o 3B, elegido con latencia medida | El pod del demo tiene 2 vCPU / 4 GiB sin GPU; el pipeline hace 4–5 llamadas por turno. El paper usa SLM de 1–1.5B |
-| Embeddings | `bge-m3` en el benchmark. Para el demo, un multilingüe más liviano (se mide en la Fase 5); `nomic-embed-text` queda **descartado** (coseno ES↔EN de 0.59 vs 0.97 de bge-m3) | bge-m3 ocupa ~1.2 GB; las sesiones mezclan ES/EN |
+| Modelos | **Benchmark local** (M1 Pro, 16 GB): `qwen2.5:7b-instruct` y `qwen2.5:3b-instruct`, más `llama3.2:1b` / `qwen2.5:1.5b-instruct` como "tamaño del paper". **Demo público**: `qwen2.5:3b-instruct` en 4 vCPU (medido en la Fase 5) | El pod del demo tiene 2 vCPU / 4 GiB sin GPU; el pipeline hace 4–5 llamadas por turno. El paper usa SLM de 1–1.5B |
+| Embeddings | `bge-m3` en el benchmark y en el demo (cabe en la memoria del pod: ~1.2 GB); `nomic-embed-text` queda **descartado** (coseno ES↔EN de 0.59 vs 0.97 de bge-m3) | bge-m3 ocupa ~1.2 GB; las sesiones mezclan ES/EN |
 | Salida JSON | `format` de Ollama con **JSON Schema generado desde Pydantic**; validación, 1 reintento y fallback | Ollama ≥0.5 acepta schemas; medir la tasa de inválidos con y sin schema |
 | Determinismo | `temperature=0`, `seed` fijo y configurable | 3 corridas por condición; reportar varianza igual |
 | Paquetes | `uv` + `pyproject.toml`; `requirements.txt` exportado para Docker | |
@@ -68,13 +68,16 @@ Regla: **no se avanza de fase sin cumplir sus criterios de aceptación.** Cada f
 - Revisión manual de los jsonl: dónde se equivoca el scoring
 - **✅ Aceptación:** `summary.csv` con 4 condiciones × 3 corridas para al menos un modelo
 
-## Fase 5 — Publicación
-- `Dockerfile` (app, puerto 8080, SQLite efímero en `/tmp`) y `Dockerfile.ollama` (modelo horneado), más `docker-compose.yml` para correr local
-- Medir con `--cpus=2 --memory=4g` → elegir el modelo del demo
-- `DEMO_INFO` bilingüe + `demo-panel.js`; manejo elegante del teardown
-- `README.md` **portable** (sin mencionar alexisalulema.com ni la nube): qué es, arquitectura, prerrequisitos, build, run, env, uso, resultados, limitaciones y cita
-- Hand-off manifest (`shareable: false`, sin secretos) y tabla de glosario para el post
-- **Alexis:** política de open source, publicar la imagen en GHCR como Public, post EN/ES y aviso a los autores
+## Fase 5 — Publicación (en curso)
+- [x] Selector de modo en el demo: LightMem / RAG ingenuo / Comparar (`POST /chat` con `mode`); el Writer corre en segundo plano (`GET /learned/{id}`)
+- [x] `Dockerfile` (app, puerto 8080, SQLite efímero en `/tmp`) y `Dockerfile.ollama` (3B + bge-m3 horneados), `docker-compose.yml` y workflow de GHCR (tests → build → push)
+- [x] Medición en CPU → **3B con 4 vCPU / 6 GiB** (decisión de Alexis): respuesta p50 ~30 s. Hallazgo: `LLM_NUM_THREAD` debe igualar la cuota de CPU (sin eso, ~15× más lento)
+- [x] `DEMO_INFO` bilingüe + `demo-panel.js` (botón propio en la cabecera); mensaje de "sesión expirada" ante teardown
+- [x] `README.md` portable (sin mencionar el sitio ni la nube)
+- [x] Hand-off manifest y glosario: `docs/HANDOFF.md`
+- [x] Build y prueba end-to-end con `docker compose` y los límites (ver LOG)
+- [ ] Commit de cierre
+- **Alexis:** política de open source; repo público y licencia; autores completos en el BibTeX del README; pedir 4 vCPU / 6 GiB a la infra (o aceptar ~75 s con 2 vCPU); publicar en GHCR como Public; post EN/ES y aviso a los autores
 
 ## Riesgos y cómo los medimos
 | Riesgo | Señal |

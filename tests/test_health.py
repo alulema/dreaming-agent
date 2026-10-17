@@ -102,3 +102,55 @@ def test_dream_endpoints(client):
     assert [a["op"] for a in diff["ops_applied"]] == ["MERGE"]
     assert client.get("/dreams").json()["dreams"][0]["dream_id"] == diff["dream_id"]
     assert client.get("/memory").json()["stats"]["ltm"] == 1
+
+
+def _fake_app(client):
+    from app.memory.embed import Embedder
+    from app.pipeline.agent import Agent
+    from app.pipeline.strategies import NaiveRAG
+    from tests.fakes import FakeLLM
+
+    state = client.app.state
+    fake = FakeLLM()
+    emb = Embedder(fake, "fake")
+    state.llm, state.embedder = fake, emb
+    state.agent = Agent(fake, emb, state.store, state.settings, index_turns=True)
+    state.rag = NaiveRAG(fake, emb, state.store, state.settings)
+    return fake
+
+
+def test_modes_share_memory_and_learning_runs_in_background(client):
+    fake = _fake_app(client)
+    writer_out = {"has_new_facts": True, "entries": [
+        {"text": "The user lives in Lima", "kind": "fact", "entities": ["Lima"],
+         "topics": ["user.location"]}]}
+
+    # 1) RAG mode: one Responder call; the Writer still runs afterwards (its own gate).
+    fake.script("writer", writer_out)
+    fake.text_replies.append("Anotado.")
+    r = client.post("/chat", json={"session_id": "s", "message": "Vivo en Lima", "mode": "rag"})
+    body = r.json()
+    assert body["reply"] == "Anotado." and body["trace"]["mode"] == "rag"
+    learned = client.get(f"/learned/{body['learn_id']}").json()
+    assert learned["done"] and [e["text"] for e in learned["writer"]["entries"]] == [
+        "The user lives in Lima"]
+    # the raw turn was indexed for RAG
+    assert client.app.state.store._query(
+        "SELECT COUNT(*) FROM turns WHERE embedding IS NOT NULL")[0][0] == 1
+
+    # 2) Compare mode: RAG sees the indexed turn; LightMem sees the MTM fact; one stored turn.
+    fake.script("controller", {"shares_new_info": False, "needs_memory": True,
+                               "queries": ["where the user lives"], "tiers": ["MTM"]})
+    fake.script("selector", {"keep": [1], "context": "x"})
+    fake.text_replies.extend(["RAG: Lima", "LightMem: Lima"])
+    body = client.post("/chat", json={"session_id": "s", "message": "¿Dónde vivo?",
+                                      "mode": "compare"}).json()
+    assert body["rag"]["reply"] == "RAG: Lima" and body["reply"] == "LightMem: Lima"
+    assert "Vivo en Lima" in body["rag"]["trace"]["memory_context"]
+    assert "The user lives in Lima" in body["trace"]["selector"]["context"]
+    assert client.get(f"/learned/{body['learn_id']}").json()["writer"]["skipped"]  # gate=False
+    assert len(client.get("/memory", params={"session_id": "s"}).json()["stm"]) == 4
+
+    assert client.get("/learned/nope").status_code == 404
+    assert client.post("/chat", json={"session_id": "s", "message": "x",
+                                      "mode": "other"}).status_code == 422

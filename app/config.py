@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     llm_seed: int = 42
     llm_timeout_s: float = 60.0
     llm_json_retries: int = 1
+    llm_num_thread: int = 0  # 0 = Ollama default; set to the CPU quota when containerised
     embed_timeout_s: float = 30.0
 
     # Storage

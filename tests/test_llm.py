@@ -118,3 +118,18 @@ async def test_chat_text_and_embed_and_list_models(client):
     assert await client.embed(["a", "b"], "bge-m3") == [[1.0, 0.0], [0.0, 1.0]]
     assert await client.embed([], "bge-m3") == []
     assert await client.list_models() == ["bge-m3:latest"]
+
+
+@respx.mock
+async def test_num_thread_is_sent_to_chat_and_embed():
+    c = OllamaClient(BASE, "m", num_thread=2)
+    chat = respx.post(f"{BASE}/api/chat").mock(
+        return_value=chat_reply('{"needs_memory": true, "queries": []}')
+    )
+    emb = respx.post(f"{BASE}/api/embed").mock(
+        return_value=httpx.Response(200, json={"embeddings": [[1.0]]})
+    )
+    await c.chat_json("controller", [], Out, fallback)
+    await c.embed(["x"], "e")
+    assert json.loads(chat.calls.last.request.content)["options"]["num_thread"] == 2
+    assert json.loads(emb.calls.last.request.content)["options"] == {"num_thread": 2}

@@ -78,6 +78,7 @@ class OllamaClient:
         seed: int | None = 42,
         timeout_s: float = 60.0,
         json_retries: int = 1,
+        num_thread: int | None = None,
         http: httpx.AsyncClient | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -87,6 +88,9 @@ class OllamaClient:
         self.seed = seed
         self.timeout_s = timeout_s
         self.json_retries = json_retries
+        # Under a CPU quota (container limits) llama.cpp still sees every host core and starts one
+        # thread per core; the quota then throttles them all. Pinning it to the quota is ~15x faster.
+        self.num_thread = num_thread
         self.http = http or httpx.AsyncClient()
         self.stats = LLMStats()
 
@@ -97,6 +101,8 @@ class OllamaClient:
         opts: dict[str, Any] = {"temperature": self.temperature}
         if self.seed is not None:
             opts["seed"] = self.seed
+        if self.num_thread:
+            opts["num_thread"] = self.num_thread
         return opts
 
     async def _chat(self, messages: list[dict], fmt: Any, timeout: float) -> str:
@@ -179,7 +185,8 @@ class OllamaClient:
             return []
         r = await self.http.post(
             f"{self.base_url}/api/embed",
-            json={"model": model, "input": texts},
+            json={"model": model, "input": texts,
+                  "options": {"num_thread": self.num_thread} if self.num_thread else {}},
             timeout=timeout,
         )
         r.raise_for_status()

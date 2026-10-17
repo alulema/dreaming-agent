@@ -1,0 +1,53 @@
+# Runs the demo locally: app + Ollama with baked models. Only the app port is published.
+#
+#   docker compose up -d --build      ->  http://localhost:8080
+#
+# The CPU/memory limits mirror a small CPU-only server, so the latency you see locally is
+# close to what a modest host gives. Raise them freely; keep LLM_NUM_THREAD = OLLAMA_CPUS.
+#
+#   OLLAMA_CPUS=2 LLM_NUM_THREAD=2 docker compose up -d    # smaller host
+services:
+  ollama:
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama
+      args:
+        LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b-instruct}
+        EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+    image: ghcr.io/alulema/dreaming-agent-ollama:latest
+    cpus: ${OLLAMA_CPUS:-4}
+    mem_limit: 5g
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/alulema/dreaming-agent-app:latest
+    cpus: 0.25
+    mem_limit: 512m
+    ports:
+      - "8080:8080"
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b-instruct}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      # CPU inference is slow: give each model call room before falling back.
+      LLM_TIMEOUT_S: "180"
+      # Ollama sees every host core inside a container and starts one thread per core; under
+      # a CPU quota that is ~15x slower than matching the quota. Keep it equal to OLLAMA_CPUS.
+      LLM_NUM_THREAD: ${LLM_NUM_THREAD:-4}
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s

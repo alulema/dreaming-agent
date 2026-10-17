@@ -1,0 +1,18 @@
+# Ollama image with the models baked in: no `ollama pull` at runtime, works offline.
+FROM ollama/ollama
+
+# Listen on all interfaces so the app container can reach it.
+ENV OLLAMA_HOST=0.0.0.0:11434 \
+    # Keep both models resident: reloading a model on CPU costs seconds per turn.
+    OLLAMA_KEEP_ALIVE=-1 \
+    OLLAMA_MAX_LOADED_MODELS=2 \
+    OLLAMA_NUM_PARALLEL=1
+
+ARG LLM_MODEL=qwen2.5:3b-instruct
+ARG EMBED_MODEL=bge-m3
+RUN ollama serve & \
+    until ollama list >/dev/null 2>&1; do sleep 1; done \
+    && ollama pull "${LLM_MODEL}" \
+    && ollama pull "${EMBED_MODEL}"
+
+EXPOSE 11434

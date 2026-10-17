@@ -35,16 +35,32 @@ def _llm_info(r: LLMResult) -> dict[str, Any]:
 
 class Agent:
     def __init__(
-        self, llm: OllamaClient, embedder: Embedder, store: MemoryStore, settings: Settings
+        self, llm: OllamaClient, embedder: Embedder, store: MemoryStore, settings: Settings,
+        *, index_turns: bool = False,
     ) -> None:
+        """`index_turns`: also embed each user turn, so a naive-RAG answer can search the
+        raw conversation (the app's mode selector). Off in the benchmark."""
+        self.index_turns = index_turns
         self.llm = llm
         self.embedder = embedder
         self.store = store
         self.settings = settings
 
     async def chat(self, session_id: str, message: str, *, learn: bool = True) -> ChatResult:
-        """`learn=False` answers without storing the turn or writing memory (benchmark
-        questions must not change the memory they are measuring)."""
+        """Answer, then (if `learn`) store the turn and write memory. `learn=False` is for
+        benchmark questions, which must not change the memory they are measuring."""
+        res = await self.answer(session_id, message)
+        if learn:
+            learned = await self.learn(session_id, message, res.reply,
+                                       shares_new_info=res.trace["controller"]["shares_new_info"])
+            merge_learn_trace(res.trace, learned)
+        else:
+            res.trace["writer"] = {"skipped": True, "entries": [], "reinforced": [], "dropped": 0}
+            res.trace["latency_ms"]["total"] = res.trace["latency_ms"]["reply"]
+        return res
+
+    async def answer(self, session_id: str, message: str) -> ChatResult:
+        """Controller → Retriever → Selector → Responder. Reads memory, never writes it."""
         s = self.settings
         t_start = time.perf_counter()
         lat: dict[str, float] = {}
@@ -108,15 +124,49 @@ class Agent:
         llm_calls += 1
         lat["reply"] = round((time.perf_counter() - t_start) * 1000, 1)
 
-        user_turn = Turn(session_id=session_id, role="user", content=message)
-        if learn:
-            self.store.add_turn(user_turn)
-            self.store.add_turn(Turn(session_id=session_id, role="assistant", content=reply))
+        trace = {
+            "mode": "lightmem",
+            "session_id": session_id,
+            "model": self.llm.model,
+            "controller": {**decision.out.model_dump(), **_llm_info(decision.result),
+                           "forced_retrieval": forced},
+            "retrieval": {
+                "candidates": [
+                    {"id": c.entry.id, "tier": c.entry.tier, "text": c.entry.text,
+                     "score": round(c.score, 3)}
+                    for c in candidates
+                ],
+            },
+            "selector": None if selection is None else {
+                "skipped": selection.result is None,
+                "kept_ids": [c.entry.id for c in selection.kept],
+                "context": selection.context,
+                **(_llm_info(selection.result) if selection.result else {}),
+            },
+            "stm_turns": len(stm),
+            "fallbacks": fallbacks,
+            "repairs": repairs,
+            "llm_calls": llm_calls,
+            "latency_ms": lat,
+            "prompt_versions": {n: load_prompt(n).version for n in PROMPT_NAMES},
+        }
+        return ChatResult(reply=reply, trace=trace)
 
-        # 5. Writer (only when the Controller says the message tells something new)
+    async def learn(self, session_id: str, message: str, reply: str, *,
+                    shares_new_info: bool | None = None) -> dict[str, Any]:
+        """Store the turn and write MTM. `shares_new_info` is the Controller's gate; None
+        (no Controller ran, e.g. a RAG-mode answer) leaves the decision to the Writer's own
+        `has_new_facts`."""
+        s = self.settings
         t0 = time.perf_counter()
-        written = None
-        if learn and decision.out.shares_new_info:
+        user_vec = await self.embedder.embed_one(message) if self.index_turns else None
+        user_turn = Turn(session_id=session_id, role="user", content=message,
+                         embedding=to_bytes(user_vec) if user_vec is not None else None)
+        self.store.add_turn(user_turn)
+        self.store.add_turn(Turn(session_id=session_id, role="assistant", content=reply))
+
+        written, llm_calls, fallbacks = None, 0, []
+        if shares_new_info is not False:
             written = await run_writer(self.llm, message, grounding=s.writer_grounding)
             llm_calls += len(written.result.attempts)
             if written.result.fallback_used:
@@ -143,29 +193,8 @@ class Agent:
                     )
                     self.store.add_entry(entry)
                     new_entries.append(entry)
-        if written is not None:
-            tick("writer", t0)
-        lat["total"] = round((time.perf_counter() - t_start) * 1000, 1)
-
-        trace = {
-            "session_id": session_id,
+        return {
             "turn_id": user_turn.id,
-            "model": self.llm.model,
-            "controller": {**decision.out.model_dump(), **_llm_info(decision.result),
-                           "forced_retrieval": forced},
-            "retrieval": {
-                "candidates": [
-                    {"id": c.entry.id, "tier": c.entry.tier, "text": c.entry.text,
-                     "score": round(c.score, 3)}
-                    for c in candidates
-                ],
-            },
-            "selector": None if selection is None else {
-                "skipped": selection.result is None,
-                "kept_ids": [c.entry.id for c in selection.kept],
-                "context": selection.context,
-                **(_llm_info(selection.result) if selection.result else {}),
-            },
             "writer": {
                 "skipped": written is None,
                 "entries": [e.model_dump(include={"id", "text", "kind", "entities", "topics"})
@@ -174,11 +203,19 @@ class Agent:
                 "dropped": written.dropped if written else 0,
                 **(_llm_info(written.result) if written else {}),
             },
-            "stm_turns": len(stm),
-            "fallbacks": fallbacks,
-            "repairs": repairs,
             "llm_calls": llm_calls,
-            "latency_ms": lat,
-            "prompt_versions": {n: load_prompt(n).version for n in PROMPT_NAMES},
+            "fallbacks": fallbacks,
+            "writer_ms": round((time.perf_counter() - t0) * 1000, 1) if written else None,
         }
-        return ChatResult(reply=reply, trace=trace)
+
+
+def merge_learn_trace(trace: dict[str, Any], learned: dict[str, Any]) -> None:
+    """Fold a `learn` result into an `answer` trace (the shape the benchmark and UI read)."""
+    trace["turn_id"] = learned["turn_id"]
+    trace["writer"] = learned["writer"]
+    trace["llm_calls"] += learned["llm_calls"]
+    trace["fallbacks"] += learned["fallbacks"]
+    lat = trace["latency_ms"]
+    if learned["writer_ms"] is not None:
+        lat["writer"] = learned["writer_ms"]
+    lat["total"] = round(lat["reply"] + (learned["writer_ms"] or 0), 1)
