@@ -1,6 +1,6 @@
 # El agente que sueña
 
-Un agente conversacional con **memoria de tres niveles** y una fase de **"sueño"** (consolidación offline), inspirado en *LightMem: Lightweight LLM Agent Memory with Small Language Models* ([arXiv:2604.07798](https://arxiv.org/abs/2604.07798)). Todo corre en local con [Ollama](https://ollama.com) y modelos abiertos: **cero APIs externas, cero API keys**.
+Un agente conversacional con **memoria de tres niveles** y una fase de **"sueño"** (consolidación offline), inspirado en LightMem, del paper *Lightweight LLM Agent Memory with Small Language Models* (Zhang et al., ACL 2026; [arXiv:2604.07798](https://arxiv.org/abs/2604.07798)). Todo corre en local con [Ollama](https://ollama.com) y modelos abiertos: **cero APIs externas, cero API keys**.
 
 El demo deja ver lo que suele quedar oculto: qué decidió cada módulo en cada turno (la traza), qué hay en cada nivel de memoria y qué cambió el Dream (fusiones, actualizaciones, promociones y olvidos, con un diff). Además trae un selector para responder con **LightMem**, con un **RAG ingenuo** o **con ambos lado a lado**, porque el resultado principal del benchmark es que el RAG ingenuo gana (ver [Resultados](#resultados)).
 
@@ -188,16 +188,20 @@ LOG.md          bitácora: decisiones, desafíos y hallazgos
 
 ## Cita
 
-Si usas este trabajo, cita el paper original:
+Si usas este trabajo, cita el paper original (entrada oficial de arXiv; cámbiala por la de las actas de ACL cuando se publiquen):
 
 ```bibtex
-@inproceedings{zhang2026lightmem,
-  title     = {LightMem: Lightweight LLM Agent Memory with Small Language Models},
-  author    = {Zhang and others},
-  booktitle = {Proceedings of ACL 2026},
-  year      = {2026},
-  eprint    = {2604.07798},
-  archivePrefix = {arXiv}
+@misc{zhang2026lightweightllmagentmemory,
+  title         = {Lightweight LLM Agent Memory with Small Language Models},
+  author        = {Jiaquan Zhang and Chaoning Zhang and Shuxu Chen and Zhenzhen Huang and
+                   Pengcheng Zheng and Zhicheng Wang and Ping Guo and Fan Mo and Sung-Ho Bae and
+                   Jie Zou and Jiwei Wei and Yang Yang},
+  year          = {2026},
+  eprint        = {2604.07798},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  url           = {https://arxiv.org/abs/2604.07798},
+  note          = {Accepted at ACL 2026 (main conference)}
 }
 ```
 
