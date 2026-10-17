@@ -56,7 +56,8 @@ Regla: **no se avanza de fase sin cumplir sus criterios de aceptación.** Cada f
 - **Cambios respecto al plan** (ver LOG): umbral 0.75 + temas/entidades; MERGE/UPDATE con evidencia → LTM directo; validator con grounding (nombres/números), preservación del valor vigente y avisos "possibly stale"; el resultado hereda el `created_at` del hecho
 - **✅ Aceptación:** tests del validator (ids inexistentes, FORGET sobre LTM, MERGE de un id, etc.) y del applier; un segundo Dream seguido produce ≤ 20 % de las ops del primero
 
-## Fase 4 — Benchmark
+## Fase 4 — Benchmark ✅ (2026-10-17)
+- **Resultado:** v1 → B 89 · C 69 · D 66; v2 (4 correcciones) → B 88 · C 79 · D 79 ± 9. Ver `docs/RESULTS.md`
 - **Lecciones de las fases 2–3 que entran aquí:** ninguna entidad de los ejemplos de los prompts en `bench/` (test automático); 3 corridas obligatorias (no hay determinismo completo con temp 0 + seed); medir también los rechazos por tipo y los avisos de obsolescencia; las entradas compuestas del Writer son una variable a vigilar
 - `app/pipeline/strategies.py`: A (solo STM), B (RAG ingenuo sobre turnos crudos), C (pipeline), D (C + Dream al cerrar cada sesión). **Mismo código que la app**
 - `bench/sessions/01..08.json`: usuario ficticio. Incluye paráfrasis (MERGE), cambios (UPDATE: mudanza, trabajo, preferencia invertida), ruido (FORGET) y mezcla ES/EN. **Las revisa Alexis**

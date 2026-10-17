@@ -267,3 +267,12 @@ Todas son **flags de configuración** (v1 sigue siendo reproducible con `RETRIEV
   - 7B, conversación de 10 turnos: todos los hechos guardados; respuestas de memoria correctas; turnos de enunciado con 3 llamadas (el Selector no corre en las recuperaciones forzadas).
   - 7B, escenario Dream: tras el Dream, la pregunta final ahora acierta también "bebes café por las mañanas" (en v1 se abstenía): el modo `filter` le pasa al Responder más hechos crudos. Idempotencia [2, 1], como en v1 (n pequeño).
   - **3B:** sin fugas de ejemplos visibles, pero la compuerta sigue perdiendo hechos (nombre, perro) y **el Dream de 3B es dañino**: "The user lives **in the park**" (de "saqué a pasear a Toby por el parque") se consolidó como UPDATE de la ciudad; y "no longer likes coffee" + "no longer likes their previous job" → UPDATE sin sentido. Las reglas no lo atrapan porque está todo "grounded".
+
+## 2026-10-17 08:00 — Fase 4: RESULTADOS v2 · cierre de fase
+
+- **[RESULTADO]** (3 corridas, Mac despierto, latencias válidas) A 18 · **B 88 ± 2** · **C 79 ± 0** (v1: 69) · **D 79 ± 9** (v1: 66; corridas 71/75/89). Turno p50: A 1.3 s · B 3.4 s · C 7.9 s · D 7.0 s. Dream: ~25 s/sueño, 17 ops aplicadas y 27 rechazadas por corrida, memoria −29 %. Detalle y lectura en `docs/RESULTS.md`.
+- **[HALLAZGO] ⭐ Arreglar una pieza expone el error de otra:** el modo `filter` le pasa al Responder "name is Mateo" *y* "name is Kiwi" (error del Writer, más reciente) → C responde "Te llamas Kiwi" en las 3 corridas. En v1 el resumen del Selector lo ocultaba *por casualidad*. El Dream lo repara en 2 de 3 corridas.
+- **[HALLAZGO] Corrupciones del Dream que pasan todas las reglas:** "The user lives in **Pagora**" (la empresa) y "lives in Valparaíso (**previously allergic to peanuts**)". Grounding y preservación miran nombres y valores, no si la frase tiene sentido.
+- **[HALLAZGO]** Ningún FORGET dañino en v2 (la protección funcionó): el único FORGET aplicado en D1 fue "ran their first half marathon" (un evento sin tema protegido). Discutible: era un logro, no ruido.
+- **[RESULTADO] ✅ Fase 4 completa.** Criterio: `summary.csv` con las 4 condiciones × 3 corridas para al menos un modelo (en realidad dos versiones del sistema, v1 y v2).
+- Pendiente opcional: correr 3B (el tamaño del paper) en v2. La validación de desarrollo ya anticipa que su Dream es dañino.
