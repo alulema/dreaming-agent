@@ -10,7 +10,7 @@ Regla: **no se avanza de fase sin cumplir sus criterios de aceptación.** Cada f
 | Tema | Decisión | Razón |
 |---|---|---|
 | Modelos | **Benchmark local** (M1 Pro, 16 GB): `qwen2.5:7b-instruct` y `qwen2.5:3b-instruct`, más `llama3.2:1b` / `qwen2.5:1.5b-instruct` como "tamaño del paper". **Demo público**: 1.5B o 3B, elegido con latencia medida | El pod del demo tiene 2 vCPU / 4 GiB sin GPU; el pipeline hace 4–5 llamadas por turno. El paper usa SLM de 1–1.5B |
-| Embeddings | `bge-m3` en el benchmark; para el demo, evaluar `nomic-embed-text` o un MiniLM multilingüe por memoria | bge-m3 ocupa ~1.2 GB |
+| Embeddings | `bge-m3` en el benchmark; para el demo, evaluar `nomic-embed-text` ~~`nomic-embed-text`~~ descartado (coseno ES↔EN de 0.59), así que toca buscar un multilingüe liviano | bge-m3 ocupa ~1.2 GB |
 | Salida JSON | `format` de Ollama con **JSON Schema generado desde Pydantic**; validación, 1 reintento y fallback | Ollama ≥0.5 acepta schemas; medir la tasa de inválidos con y sin schema |
 | Determinismo | `temperature=0`, `seed` fijo y configurable | 3 corridas por condición; reportar varianza igual |
 | Paquetes | `uv` + `pyproject.toml`; `requirements.txt` exportado para Docker | |
@@ -23,10 +23,10 @@ Regla: **no se avanza de fase sin cumplir sus criterios de aceptación.** Cada f
 ## Fase 0 — Preparación
 - [x] Leer la spec, el contrato y el paper (resumen en `docs/paper-notes.md`)
 - [x] `PLAN.md`, `LOG.md` y estructura de carpetas
-- [ ] `pyproject.toml` (uv), `.gitignore`, venv y dependencias
-- [ ] Modelos: `qwen2.5:7b-instruct`, `qwen2.5:3b-instruct`, `bge-m3`, `nomic-embed-text`, `llama3.2:1b`
-- [ ] Smoke test: chat y embeddings vía la API de Ollama, más structured output con schema
-- [ ] Primer commit
+- [x] `pyproject.toml` (uv), `.gitignore`, venv y dependencias
+- [x] Modelos: `qwen2.5:7b-instruct`, `qwen2.5:3b-instruct`, `bge-m3`, `nomic-embed-text`, `llama3.2:1b`
+- [x] Smoke test: chat y embeddings vía la API de Ollama, más structured output con schema
+- [x] Primer commit
 - [ ] **Alexis:** confirmar `docs/paper-notes.md` contra el paper
 
 ## Fase 1 — Esqueleto
