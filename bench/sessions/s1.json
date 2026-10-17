@@ -1,0 +1,29 @@
+{
+  "id": "s1",
+  "date": "2026-01-10",
+  "lang": "es",
+  "description": "Presentación: nombre, ciudad, trabajo, mascota, deporte",
+  "turns": [
+    "Hola, me llamo Mateo. Vivo en Valparaíso desde hace años.",
+    "Trabajo como arquitecto en un estudio pequeño que se llama Estudio Faro.",
+    "Tengo un loro que se llama Kiwi, es muy hablador.",
+    "Hoy hace un día nublado y algo frío por aquí.",
+    "Me gusta mucho nadar, voy a la piscina dos veces por semana.",
+    "¿Me recomiendas algún libro de arquitectura para el fin de semana?"
+  ],
+  "notes": {
+    "facts": [
+      "name=Mateo",
+      "city=Valparaíso",
+      "job=arquitecto @ Estudio Faro",
+      "pet=loro Kiwi",
+      "sport=natación"
+    ],
+    "noise": [
+      "clima nublado"
+    ],
+    "question_turns": [
+      6
+    ]
+  }
+}

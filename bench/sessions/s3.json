@@ -1,0 +1,30 @@
+{
+  "id": "s3",
+  "date": "2026-02-07",
+  "lang": "en",
+  "description": "Inglés: japonés, escalada, cumpleaños; paráfrasis de Kiwi",
+  "turns": [
+    "Hi! I've started learning Japanese, I practice every evening.",
+    "On weekends I go rock climbing with some friends.",
+    "My birthday is on March 12, so it's coming up soon.",
+    "Kiwi, my parrot, learned to whistle a new song.",
+    "Traffic was terrible this morning.",
+    "Can you suggest a good app to practice Japanese?"
+  ],
+  "notes": {
+    "facts": [
+      "learning=japonés",
+      "sport=escalada",
+      "birthday=12 de marzo"
+    ],
+    "paraphrase": [
+      "Kiwi (MERGE, cruce ES/EN)"
+    ],
+    "noise": [
+      "tráfico"
+    ],
+    "question_turns": [
+      6
+    ]
+  }
+}

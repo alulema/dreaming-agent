@@ -1,0 +1,25 @@
+{
+  "id": "s6",
+  "date": "2026-04-11",
+  "lang": "en",
+  "description": "Inglés: dieta se invierte (UPDATE), hermana se muda (UPDATE), ciclismo",
+  "turns": [
+    "Quick update about my diet: I started eating fish again, I'm no longer vegetarian.",
+    "I cycle along the Rambla almost every morning now.",
+    "My sister Elena moved from Lisbon to Porto for a new hospital job.",
+    "She is coming to visit me in Montevideo next month.",
+    "It rained all afternoon today."
+  ],
+  "notes": {
+    "updates": [
+      "diet: vegetariano -> come pescado",
+      "sister city: Lisboa -> Oporto"
+    ],
+    "facts": [
+      "sport=ciclismo"
+    ],
+    "noise": [
+      "lluvia"
+    ]
+  }
+}

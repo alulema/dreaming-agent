@@ -1,0 +1,26 @@
+{
+  "id": "s7",
+  "date": "2026-05-02",
+  "lang": "es",
+  "description": "Segunda mascota, media maratón",
+  "turns": [
+    "Adopté un perro, se llama Ramón y es un mestizo muy tranquilo.",
+    "Kiwi y Ramón se llevan bastante bien.",
+    "El domingo corrí mi primera media maratón aquí en Montevideo.",
+    "Terminé en dos horas y diez minutos.",
+    "Hoy fui al supermercado a comprar pan.",
+    "¿Cómo puedo recuperarme bien después de una carrera larga?"
+  ],
+  "notes": {
+    "facts": [
+      "pet=perro Ramón",
+      "evento: media maratón (2h10)"
+    ],
+    "noise": [
+      "supermercado"
+    ],
+    "question_turns": [
+      6
+    ]
+  }
+}

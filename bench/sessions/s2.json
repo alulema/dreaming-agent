@@ -1,0 +1,28 @@
+{
+  "id": "s2",
+  "date": "2026-01-24",
+  "lang": "es",
+  "description": "Dieta, alergia, hermana, viaje; paráfrasis de Kiwi",
+  "turns": [
+    "Hola de nuevo. Te cuento que soy vegetariano desde hace cinco años.",
+    "Ah, y soy alérgico al maní, así que tengo que tener mucho cuidado.",
+    "Mi hermana Elena es médica y vive en Lisboa.",
+    "El mes pasado hice un viaje a la Patagonia y fue increíble.",
+    "Hoy almorcé una ensalada con quinoa.",
+    "Mi loro Kiwi ya dice 'hola' cuando llego a casa."
+  ],
+  "notes": {
+    "facts": [
+      "diet=vegetariano",
+      "allergy=maní",
+      "sister=Elena, médica, Lisboa",
+      "trip=Patagonia"
+    ],
+    "paraphrase": [
+      "Kiwi (MERGE)"
+    ],
+    "noise": [
+      "almuerzo"
+    ]
+  }
+}

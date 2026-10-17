@@ -1,0 +1,25 @@
+{
+  "id": "s5",
+  "date": "2026-03-20",
+  "lang": "es+en",
+  "description": "Mudanza (UPDATE); mezcla de idiomas en la misma frase",
+  "turns": [
+    "¡Me mudé a Montevideo! Ya no vivo en Valparaíso.",
+    "Encontré un apartamento cerca de la Rambla.",
+    "Kiwi came with me, he handled the trip pretty well.",
+    "Sigo nadando, now I go to a pool near my new place.",
+    "Hoy desayuné medialunas."
+  ],
+  "notes": {
+    "updates": [
+      "city: Valparaíso -> Montevideo"
+    ],
+    "paraphrase": [
+      "Kiwi (EN)",
+      "natación (refuerzo, frase mixta)"
+    ],
+    "noise": [
+      "desayuno"
+    ]
+  }
+}

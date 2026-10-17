@@ -1,0 +1,28 @@
+{
+  "id": "s4",
+  "date": "2026-02-28",
+  "lang": "es",
+  "description": "Cambio de trabajo (UPDATE) con evento previo (temporal)",
+  "turns": [
+    "Tengo noticias: dejé el Estudio Faro.",
+    "Antes de irme hice un curso online de diseño UX que me encantó.",
+    "Ahora trabajo como diseñador UX en una fintech que se llama Pagora.",
+    "El equipo de Pagora es muy joven y trabajamos en remoto.",
+    "Hoy se me olvidó el paraguas.",
+    "¿Qué consejos me das para mis primeras semanas en un trabajo nuevo?"
+  ],
+  "notes": {
+    "updates": [
+      "job: arquitecto @ Estudio Faro -> diseñador UX @ Pagora"
+    ],
+    "facts": [
+      "evento: curso de UX antes de dejar el estudio"
+    ],
+    "noise": [
+      "paraguas"
+    ],
+    "question_turns": [
+      6
+    ]
+  }
+}

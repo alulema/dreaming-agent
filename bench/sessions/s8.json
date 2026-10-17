@@ -1,0 +1,29 @@
+{
+  "id": "s8",
+  "date": "2026-05-23",
+  "lang": "es",
+  "description": "Pareja, plan de viaje, refuerzos; preferencia deportiva cambia",
+  "turns": [
+    "Mi pareja se llama Valentina, es historiadora y trabaja en un museo.",
+    "En diciembre vamos a viajar a Japón, por eso estudio japonés.",
+    "Sigo muy contento en Pagora, ya me dieron más responsabilidades.",
+    "Ya no voy a escalar tanto, ahora prefiero el ciclismo.",
+    "Hoy vi una película en casa."
+  ],
+  "notes": {
+    "facts": [
+      "partner=Valentina, historiadora",
+      "plan=viaje a Japón en diciembre"
+    ],
+    "paraphrase": [
+      "japonés (refuerzo)",
+      "Pagora (refuerzo)"
+    ],
+    "updates": [
+      "preferencia: escalada -> ciclismo"
+    ],
+    "noise": [
+      "película"
+    ]
+  }
+}

@@ -1,0 +1,399 @@
+{
+  "version": 1,
+  "final_session_note": "Se preguntan en una sesión nueva (STM vacía) después de las 8 sesiones.",
+  "questions": [
+    {
+      "id": "q01",
+      "category": "single_fact",
+      "question": "¿Cómo me llamo?",
+      "expected": [
+        [
+          "mateo"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s1"
+    },
+    {
+      "id": "q02",
+      "category": "single_fact",
+      "question": "¿Cómo se llama mi loro?",
+      "expected": [
+        [
+          "kiwi"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s1,s2,s3,s5,s7"
+    },
+    {
+      "id": "q03",
+      "category": "single_fact",
+      "question": "¿A qué soy alérgico?",
+      "expected": [
+        [
+          "mani",
+          "cacahuete",
+          "peanut"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s2"
+    },
+    {
+      "id": "q04",
+      "category": "single_fact",
+      "question": "What's my sister's name?",
+      "expected": [
+        [
+          "elena"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s2,s6"
+    },
+    {
+      "id": "q05",
+      "category": "single_fact",
+      "question": "¿Cuándo es mi cumpleaños?",
+      "expected": [
+        [
+          "12"
+        ],
+        [
+          "marzo",
+          "march"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s3 (EN)"
+    },
+    {
+      "id": "q06",
+      "category": "single_fact",
+      "question": "¿Qué idioma estoy aprendiendo?",
+      "expected": [
+        [
+          "japones",
+          "japanese"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s3 (EN),s8"
+    },
+    {
+      "id": "q07",
+      "category": "updated_fact",
+      "question": "¿En qué ciudad vivo actualmente? Responde solo con la ciudad.",
+      "expected": [
+        [
+          "montevideo"
+        ]
+      ],
+      "forbidden": [
+        "valparaiso"
+      ],
+      "source": "s1 -> s5"
+    },
+    {
+      "id": "q08",
+      "category": "updated_fact",
+      "question": "¿A qué me dedico ahora? Responde en una frase corta.",
+      "expected": [
+        [
+          "ux"
+        ]
+      ],
+      "forbidden": [
+        "arquitect",
+        "architect"
+      ],
+      "source": "s1 -> s4"
+    },
+    {
+      "id": "q09",
+      "category": "updated_fact",
+      "question": "¿En qué empresa trabajo hoy? Responde solo con el nombre.",
+      "expected": [
+        [
+          "pagora"
+        ]
+      ],
+      "forbidden": [
+        "faro"
+      ],
+      "source": "s1 -> s4"
+    },
+    {
+      "id": "q10",
+      "category": "updated_fact",
+      "question": "¿Cuál es mi dieta actual? Responde en una frase corta.",
+      "expected": [
+        [
+          "pescado",
+          "fish",
+          "no vegetarian",
+          "no eres vegetarian",
+          "ya no eres vegetarian",
+          "no longer vegetarian",
+          "dejaste de ser vegetarian"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s2 -> s6 (EN)",
+      "note": "forbidden vacío a propósito: 'ya no eres vegetariano' contiene el valor viejo"
+    },
+    {
+      "id": "q11",
+      "category": "updated_fact",
+      "question": "¿En qué ciudad vive mi hermana ahora? Responde solo con la ciudad.",
+      "expected": [
+        [
+          "oporto",
+          "porto"
+        ]
+      ],
+      "forbidden": [
+        "lisboa",
+        "lisbon"
+      ],
+      "source": "s2 -> s6 (EN)"
+    },
+    {
+      "id": "q12",
+      "category": "updated_fact",
+      "question": "¿Cuántas mascotas tengo ahora?",
+      "expected": [
+        [
+          "dos",
+          "two",
+          "2"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s1 + s7",
+      "note": "no es contradicción sino acumulación: 1 -> 2 mascotas"
+    },
+    {
+      "id": "q13",
+      "category": "multi_session",
+      "question": "¿Qué deportes te he mencionado?",
+      "expected": [
+        [
+          "nad",
+          "natacion",
+          "swim"
+        ],
+        [
+          "escal",
+          "climb"
+        ],
+        [
+          "cicl",
+          "bici",
+          "cycl",
+          "bike"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s1,s3 (EN),s5,s6 (EN),s8",
+      "note": "correr/media maratón (s7) es opcional"
+    },
+    {
+      "id": "q14",
+      "category": "multi_session",
+      "question": "¿Cómo se llaman mis mascotas?",
+      "expected": [
+        [
+          "kiwi"
+        ],
+        [
+          "ramon"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s1,s7"
+    },
+    {
+      "id": "q15",
+      "category": "multi_session",
+      "question": "¿Qué sabes de mi hermana?",
+      "expected": [
+        [
+          "elena"
+        ],
+        [
+          "medic",
+          "doctor"
+        ],
+        [
+          "oporto",
+          "porto"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s2,s6 (EN)",
+      "note": "mencionar Lisboa como ciudad anterior es aceptable (no está en forbidden)"
+    },
+    {
+      "id": "q16",
+      "category": "multi_session",
+      "question": "¿En qué ciudades he vivido?",
+      "expected": [
+        [
+          "valparaiso"
+        ],
+        [
+          "montevideo"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s1,s5"
+    },
+    {
+      "id": "q17",
+      "category": "multi_session",
+      "question": "¿Qué trabajos he tenido?",
+      "expected": [
+        [
+          "arquitect",
+          "architect"
+        ],
+        [
+          "ux"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s1,s4"
+    },
+    {
+      "id": "q18",
+      "category": "multi_session",
+      "question": "¿Qué viajes he hecho o tengo planeados?",
+      "expected": [
+        [
+          "patagonia"
+        ],
+        [
+          "japon",
+          "japan"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s2,s8"
+    },
+    {
+      "id": "q19",
+      "category": "temporal",
+      "question": "¿Qué hice justo antes de dejar el estudio de arquitectura?",
+      "expected": [
+        [
+          "curso",
+          "course"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s4"
+    },
+    {
+      "id": "q20",
+      "category": "temporal",
+      "question": "¿En qué ciudad vivía cuando trabajaba como arquitecto?",
+      "expected": [
+        [
+          "valparaiso"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s1,s4,s5"
+    },
+    {
+      "id": "q21",
+      "category": "temporal",
+      "question": "¿Viajé a la Patagonia antes o después de mudarme a Montevideo?",
+      "expected": [
+        [
+          "antes",
+          "before"
+        ]
+      ],
+      "forbidden": [
+        "despues de mudarte",
+        "after moving",
+        "after you moved"
+      ],
+      "source": "s2,s5",
+      "note": "forbidden acotado: 'y después te mudaste' es una respuesta correcta"
+    },
+    {
+      "id": "q22",
+      "category": "temporal",
+      "question": "¿Qué mascota tenía antes de adoptar a Ramón?",
+      "expected": [
+        [
+          "kiwi"
+        ]
+      ],
+      "forbidden": [],
+      "source": "s1,s7"
+    },
+    {
+      "id": "q23",
+      "category": "temporal",
+      "question": "Cuando vivía en Valparaíso, ¿era vegetariano?",
+      "expected": [
+        [
+          "si",
+          "yes",
+          "eras vegetariano",
+          "were vegetarian"
+        ]
+      ],
+      "forbidden": [
+        "no eras vegetariano",
+        "weren't vegetarian"
+      ],
+      "source": "s2,s5,s6"
+    },
+    {
+      "id": "q24",
+      "category": "abstention",
+      "question": "¿Cómo se llama mi madre?",
+      "expected": [],
+      "forbidden": [],
+      "source": "(nunca se dijo)"
+    },
+    {
+      "id": "q25",
+      "category": "abstention",
+      "question": "¿Qué coche tengo?",
+      "expected": [],
+      "forbidden": [],
+      "source": "(nunca se dijo)"
+    },
+    {
+      "id": "q26",
+      "category": "abstention",
+      "question": "¿Cuál es mi color favorito?",
+      "expected": [],
+      "forbidden": [],
+      "source": "(nunca se dijo)"
+    },
+    {
+      "id": "q27",
+      "category": "abstention",
+      "question": "What's my blood type?",
+      "expected": [],
+      "forbidden": [],
+      "source": "(nunca se dijo)"
+    },
+    {
+      "id": "q28",
+      "category": "abstention",
+      "question": "¿En qué universidad estudié?",
+      "expected": [],
+      "forbidden": [],
+      "source": "(nunca se dijo)"
+    }
+  ]
+}
