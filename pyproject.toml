@@ -3,6 +3,7 @@ name = "dreaming-agent"
 version = "0.1.0"
 description = "A local LLM agent with three-tier memory and an offline 'dream' consolidation phase, inspired by LightMem (arXiv:2604.07798)."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

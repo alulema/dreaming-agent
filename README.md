@@ -202,3 +202,7 @@ Si usas este trabajo, cita el paper original:
 ```
 
 Este repositorio es una implementación independiente; no está afiliado con los autores del paper.
+
+## Licencia
+
+El código está bajo la licencia [MIT](LICENSE). Los modelos que la imagen de Ollama descarga tienen sus propias licencias, distintas de la del código: revisa la de cada modelo antes de redistribuir la imagen o usarla con fines comerciales (por ejemplo, `qwen2.5:3b-instruct` se publica bajo la *Qwen Research License*, y `bge-m3` bajo MIT).
