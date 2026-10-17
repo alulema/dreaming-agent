@@ -42,7 +42,9 @@ class Agent:
         self.store = store
         self.settings = settings
 
-    async def chat(self, session_id: str, message: str) -> ChatResult:
+    async def chat(self, session_id: str, message: str, *, learn: bool = True) -> ChatResult:
+        """`learn=False` answers without storing the turn or writing memory (benchmark
+        questions must not change the memory they are measuring)."""
         s = self.settings
         t_start = time.perf_counter()
         lat: dict[str, float] = {}
@@ -96,13 +98,14 @@ class Agent:
         lat["reply"] = round((time.perf_counter() - t_start) * 1000, 1)
 
         user_turn = Turn(session_id=session_id, role="user", content=message)
-        self.store.add_turn(user_turn)
-        self.store.add_turn(Turn(session_id=session_id, role="assistant", content=reply))
+        if learn:
+            self.store.add_turn(user_turn)
+            self.store.add_turn(Turn(session_id=session_id, role="assistant", content=reply))
 
         # 5. Writer (only when the Controller says the message tells something new)
         t0 = time.perf_counter()
         written = None
-        if decision.out.shares_new_info:
+        if learn and decision.out.shares_new_info:
             written = await run_writer(self.llm, message)
             llm_calls += len(written.result.attempts)
             if written.result.fallback_used:
