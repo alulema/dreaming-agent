@@ -318,3 +318,9 @@ Todas son **flags de configuración** (v1 sigue siendo reproducible con `RETRIEV
 - **[RESULTADO] Prueba en Chrome** (Ollama nativo, 3B): modo LightMem con el Writer en segundo plano ("+3 MTM" llega después de la respuesta); modo Comparar: LightMem 4.9 s / 3 llamadas frente a RAG 1.3 s / 1 llamada, ambos correctos; panel Acerca de con sus 4 pestañas.
 - Teardown: la UI traduce errores de red y 401/403/502/503/504 sin `detail` (los del gateway) en "la sesión expiró, recarga la página"; los 502/504 propios de la app traen `detail` y se muestran tal cual.
 - **[RESULTADO] End-to-end con `docker compose`** (imágenes construidas localmente, Ollama 4 vCPU / 5 GB, app 0.25 / 512 MB): `/health` ok con los dos modelos horneados; primer turno LightMem 70 s (incluye la carga de los modelos), Writer en segundo plano 65 s (3 hechos correctos); Comparar 64 s, ambos correctos; Dream de 1 cluster de 3 hechos: 70 s. Memoria de Ollama: 3.6 GiB. Imágenes: app 262 MB, Ollama **7.3 GB** (la base `ollama/ollama` trae CUDA; ~3.1 GB son modelos). Adelgazarla queda como mejora opcional.
+
+## 2026-10-17 12:30 — Fase 5: publicación del repo e imágenes
+
+- Push del historial completo a `github.com/alulema/dreaming-agent` (repo creado por Alexis, público). Licencia **MIT** para el código; el README aclara que los modelos tienen sus propias licencias (`qwen2.5:3b-instruct`: Qwen Research License, a confirmar antes de hacer pública la imagen de Ollama).
+- **[RESULTADO]** Primer workflow de GitHub Actions en verde (run 39053973196): tests + ruff, build y push de `ghcr.io/alulema/dreaming-agent-app` y `ghcr.io/alulema/dreaming-agent-ollama` (`:latest` y `:<sha>`). La imagen de Ollama (7.3 GB) cupo en el runner estándar.
+- Avisos del runner, sin impacto por ahora: las actions de Docker y `setup-uv` apuntan a Node 20 (deprecado; GitHub las fuerza a Node 24) y `ubuntu-latest` migra a Ubuntu 26 desde el 19-oct-2026.
