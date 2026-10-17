@@ -110,6 +110,9 @@ def q(id_):
     ("q24", "No me lo has dicho.", True),
     ("q24", "Tu madre se llama Rosa.", False),
     ("q27", "I don't know, you haven't told me.", True),
+    ("q27", "I don't have information about your blood type.", True),       # v1 false negative
+    ("q23", "No tengo información sobre si eras vegetariano en esa época.", False),  # v1 false +
+    ("q16", "Has vivido en Valparaíso y ahora en Montevideo. No mencionaste otras ciudades.", True),
 ])
 def test_reference_answers(qid, answer, correct):
     assert score(q(qid), answer).correct is correct

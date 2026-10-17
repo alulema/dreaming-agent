@@ -6,7 +6,11 @@ Rules (documented in bench/README.md):
 - Alternatives of 3 characters or fewer ("si", "ux", "12", "dos") must match as whole words;
   longer ones match as substrings, so stems work ("escal" matches escalada / escalar).
 - `forbidden` alternatives are substrings; any match makes the answer wrong.
-- Abstention questions are correct when the answer contains an abstention phrase.
+- Abstention questions are correct when the answer contains an abstention phrase; on every
+  other question an abstaining answer is wrong even if it happens to contain a keyword
+  ("No tengo información sobre si eras vegetariano" must not count as "eras vegetariano").
+  Only the first sentence is checked for that penalty, so a correct answer with a trailing
+  caveat ("...Montevideo. No mencionaste otras ciudades.") still counts.
 
 Keyword scoring is knowingly imperfect: every answer is saved for manual review, and the
 cases where it gets things wrong are part of the write-up.
@@ -25,7 +29,8 @@ ABSTENTION_PHRASES = [
     "i don't know", "i do not know", "you haven't told me", "you have not told me",
     "you haven't mentioned", "you never mentioned", "you didn't mention",
     "i don't have that information", "i don't have any information", "i'm not sure",
-    "i don't remember", "i do not have",
+    "i don't remember", "i do not have", "don't have information", "do not have information",
+    "don't have any details", "no tengo datos", "no tengo detalles",
 ]
 
 
@@ -48,6 +53,10 @@ def is_abstention(answer: str) -> bool:
     return any(normalize(p) in text or p in text for p in ABSTENTION_PHRASES)
 
 
+def first_sentence(answer: str) -> str:
+    return re.split(r"(?<=[.!?])\s", answer.strip(), maxsplit=1)[0]
+
+
 @dataclass
 class Score:
     correct: bool
@@ -63,5 +72,6 @@ def score(question: dict, answer: str) -> Score:
         return Score(correct=abstained, abstained=abstained, missing=[], forbidden_hits=[])
     missing = [g for g in question["expected"] if not any(matches(text, k) for k in g)]
     hits = [f for f in question["forbidden"] if normalize(f) in text]
-    return Score(correct=not missing and not hits, abstained=abstained, missing=missing,
-                 forbidden_hits=hits)
+    leads_with_abstention = is_abstention(first_sentence(answer))
+    return Score(correct=not missing and not hits and not leads_with_abstention,
+                 abstained=abstained, missing=missing, forbidden_hits=hits)

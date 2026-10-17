@@ -193,3 +193,57 @@ Misma conversación de 10 turnos, qwen2.5:7b. Resumen:
 - **[DECISIÓN] Formato del scoring:** `expected` como **grupos de alternativas** (no una lista plana de keywords) porque el agente responde en ES o EN ("maní"/"peanut", "marzo"/"March"). Las keywords de ≤3 caracteres van con límites de palabra ("si", "ux", "12"); las más largas, como substring/raíz ("escal" → escalada/escalar).
 - **[HALLAZGO] Diseñar `forbidden` es delicado:** la LTM consolidada guarda "(previously lived in X)" y el Responder tiende a decir "vives en Montevideo (antes en Valparaíso)", lo que es *correcto* pero contiene el valor viejo. Mitigación: las preguntas `updated_fact` piden respuesta corta ("responde solo con la ciudad"), y en dieta y temporal el `forbidden` se acota o queda vacío (anotado en cada pregunta). Hay que revisar a mano estos casos en los resultados.
 - 8 sesiones / 45 turnos (s3 y s6 en inglés, s5 mezcla idiomas dentro de la misma frase), 28 preguntas (6/6/6/5/5). 28 tests nuevos (integridad de datos + respuestas de referencia del scoring). **93 tests en verde.**
+
+## 2026-10-17 02:20 — Fase 4: estrategias, runner y smoke test con 3B
+
+- **[DECISIÓN] Protocolo del bench:**
+  - Cada (condición, corrida) parte de memoria vacía y reproduce s1..s8; D sueña al final de cada sesión.
+  - Cada pregunta va en **su propia sesión nueva y en modo solo lectura** (`learn=False`: no se guardan turnos ni memoria). En una sola sesión, la STM filtraría respuestas entre preguntas; y en B, cada pregunta se indexaría como "algo que dijo el usuario".
+  - B indexa **solo los mensajes del usuario** (no las respuestas del asistente) y usa el **mismo prompt de Responder** que A/C/D: lo único que cambia entre condiciones es la memoria que llega al Responder.
+  - Las corridas se intercalan (A1 B1 C1 D1 A2…) para repartir entre condiciones la variación de carga de la máquina. Cada fila guarda `git_rev` y el hash de cada prompt.
+- **[FALLO] ⭐ Smoke test con qwen2.5:3b** (s1–s2, 4 preguntas): B 3/4, C 1/4, D 1/4.
+  - **Fuga masiva de ejemplos en el Writer de 3B:** ante "Tengo un loro que se llama Kiwi, es muy hablador" escribió *"The user works as a teacher"*, *"The user lives in Bilbao"*, *"The user no longer works at the bakery"*: los ejemplos de Iker/Bilbao/bakery del prompt. Y convirtió al loro en **gato** ("The user's cat is named Kiwi"), contaminado por el ejemplo de la gata Nube. Resultado: "¿En qué ciudad vivo?" → **"Bilbao."**
+  - **La compuerta `shares_new_info` falla con 3B:** no marcó como información nueva "Hola, me llamo Mateo. Vivo en Valparaíso", ni el trabajo, ni la alergia → C/D responden "You haven't told me about your name yet".
+  - Basura extra: "The user lives in a place where they have a pet named Kiwi".
+  - **B es inmune por construcción:** guarda las frases literales del usuario; no hay ningún paso donde un modelo pequeño pueda inventar. Primer indicio de un posible hallazgo central: *con modelos pequeños, cada llamada extra al LLM es una oportunidad más de corromper la memoria*.
+- **[DECISIÓN] Metodología:** Alexis pidió ver el comportamiento "con lo que hay". Se lanza el bench completo con 7B **sin tocar el sistema** como **línea base v1**. Cualquier corrección posterior (p. ej. grounding del Writer) se diseñará como regla general y se validará con los datos de *desarrollo* (Lucía/Marco/Ana), **no con las sesiones del bench**, para no ajustar el sistema al conjunto de prueba. Luego se medirá como v2.
+
+## 2026-10-17 03:00 — Fase 4: el Mac se dormía en medio del bench
+
+- **[DESAFÍO]** El bench de 7B avanzaba muchísimo más lento de lo esperado: 15 min de hueco entre el fin de A1 y el inicio de B1, y ~18 min para 12 preguntas, cuando las latencias *medidas* de cada llamada eran normales (~2 s). Diagnóstico: el tiempo se perdía *entre* llamadas, porque el Mac entraba en reposo por inactividad y pausaba el proceso. Solución: `caffeinate -i -w <pid del bench>`, que impide el reposo solo mientras vive el proceso (no cambia ninguna configuración del sistema).
+- **[HALLAZGO] Las métricas no se contaminan:** latencia por etapa y p50/p95 se miden dentro de cada llamada; solo el `wall_s` total de las corridas A1/B1 está inflado y no debe usarse. Para la próxima: guardar un timestamp en cada registro JSONL y lanzar el bench envuelto en `caffeinate` desde el principio.
+- **[DESAFÍO] (continuación)** `caffeinate -i` no bastó: `pmset -g log` muestra al Mac en **Deep Idle (dormido)** desde las 21:42, con *DarkWakes* de ~3 min cada ~15 min, durante los cuales avanza el bench; vuelve a dormir por **"Dark Wake Thermal Emergency"** (carga de GPU en DarkWake, probablemente con la tapa cerrada). Un reposo ya iniciado (o el de la tapa cerrada) no se evita con una aserción `-i`, y la configuración de energía del sistema no se toca. Se avisó a Alexis para que deje el Mac despierto.
+- **[HALLAZGO] Riesgo para las métricas de latencia:** las llamadas hechas durante DarkWakes con emergencia térmica pueden estar ralentizadas (GPU estrangulada). **La exactitud es válida; las latencias de esta corrida v1 hay que mirarlas con desconfianza**, y quizá repetir la medición de latencia con el Mac despierto.
+
+## 2026-10-17 05:00 — Fase 4: RESULTADOS v1 (qwen2.5:7b, 4 condiciones × 3 corridas)
+
+| Cond. | Total | Single | Updated | Multi | Temporal | Abstención | Memoria final (entradas / tokens) |
+|---|---|---|---|---|---|---|---|
+| A sin memoria | 18 % | 0 | 0 | 0 | 0 | 100 | 0 |
+| **B RAG ingenuo** | **89 ± 0 %** | 100 | 100 | 67 | 80 | 100 | 45 / 584 |
+| C pipeline | 69 ± 2 % | 83 | 83 | 44 | 33 | 100 | 45 / 476 |
+| D pipeline + Dream | 66 ± 4 % | 67 | 83 | 44 | 33 | 100 | 30 ± 5 / 418 ± 47 |
+
+(Después de corregir el scoring con `bench/rescore.py`, ver abajo. Latencias **no válidas** en esta corrida por el reposo del Mac.)
+
+### [RESULTADO] ⭐ Con un 7B local, el RAG ingenuo le gana por 20 puntos al pipeline estilo LightMem, y el Dream resta otros 3
+La pregunta del post ("¿la consolidación offline ayuda a un modelo pequeño?") tiene una primera respuesta honesta: **no, en este setup no**. El Dream sí comprime la memoria (−33 % de entradas, −12 % de tokens frente a C), pero a costa de exactitud.
+
+### [HALLAZGO] Dónde pierde C frente a B (diagnóstico reconstruyendo la memoria de C1)
+1. **El Controller decide no buscar** (q06, q07): "¿Qué idioma estoy aprendiendo?" y "¿En qué ciudad vivo actualmente?" → `needs_memory=false`. Sin contexto, el Responder **inventa** ("Estás aprendiendo español") o se abstiene. Fallan las 6 corridas de C/D.
+2. **El Selector poda de más** (q19, q20): la recuperación *sí* trae los hechos ("took an online UX design course" 0.65; "works as an architect at Estudio Faro" 0.71, **el primer candidato**), pero el Selector se queda con uno solo ("The user left the Estudio Faro") y el Responder dice "no tengo información". Las preguntas temporales necesitan *unir* dos hechos; la compresión los separa. B le pasa al Responder 8 frases crudas y el 7B razona bien sobre ellas.
+3. **La recuperación falla en preguntas agregadas** (q13 deportes, q17 trabajos): "rock climbing" y "cycles along the Rambla" no entran en el top-8 de "sports the user mentioned"; sí entran "medialunas for breakfast" y "forgot their umbrella" (0.59). El ruido que el Writer guardó compite con los hechos.
+4. **Errores del Writer** (7B, a pesar de las 4 iteraciones de prompts): *"The user's name is Kiwi"* (de "Mi loro Kiwi ya dice hola"), *"The user's friend is Ramón"* (el perro), *"The user is coming to visit the user"*, *"The user no longer prefers climbing to cycling"* (significado invertido), y guardó todo el ruido trivial (paraguas, desayuno, película).
+
+### [HALLAZGO] ⭐ Lo que hizo el Dream (D, 3 corridas)
+- **El error del Writer se vuelve permanente:** en las 3 corridas el Consolidator resolvió "name is Mateo" vs "name is Kiwi" como UPDATE: r1 → "Mateo (previously was Kiwi)"; r2 → **"The user's name is Kiwi (previously named Mateo)"**; r3 → **"The user's name is Kiwi"**. Las D2/D3 responden **"Te llamas Kiwi"**. La regla de "preservación del valor vigente" *ayudó a romperlo*: el valor más reciente era el falso, y la regla exigía conservarlo. **Las reglas deterministas validan forma, no verdad.**
+- **FORGET dañinos (r1):** olvidó **"The user is allergic to peanuts"** (un dato de salud), "took an online UX design course" y "went on a trip to Patagonia". Los tres dichos una sola vez, así que la regla "no olvidar lo reforzado" no los protegió. D1 falla la alergia; ninguna D acierta "qué hice antes de dejar el estudio".
+- **MERGE de cosas no relacionadas:** paraguas + Kiwi, hermana + Valparaíso. Pasaron el grounding porque no inventan nombres: lo que hacen es *mezclar*.
+- Lo bueno: limpió el ruido (supermercado, película), unificó al perro y al loro, 13 ± 5 ops aplicadas y 17 ± 6 rechazadas por corrida. Las reglas rechazaron 9 + 7 + 2 UPDATE que perdían valores vigentes.
+- Los timeouts/fallbacks del Consolidator (r2: 4, r3: 9) son **artefactos del reposo del Mac** (llamadas de 60 s en DarkWake térmico), no del modelo.
+
+### [FALLO] Errores del scoring encontrados en la revisión manual (corregidos y re-puntuados, sin re-correr)
+- **Falso positivo:** A (sin memoria) "acertaba" q23 con "No tengo información sobre si **eras vegetariano**…" → regla nueva: si la *primera frase* se abstiene, la respuesta no cuenta como correcta.
+- **Falso negativo:** "I don't have information about your blood type" no se detectaba como abstención → más frases.
+- La primera versión de la regla ("cualquier abstención anula") rompió un acierto ("…Montevideo. No mencionaste otras ciudades.") → por eso se mira solo la primera frase. Tres iteraciones del scoring: el scoring por keywords necesita revisión manual, como avisaba la spec.
+- Preguntas que fallan en *todas* las condiciones, incluida B: q22 ("¿Qué mascota tenía antes de adoptar a Ramón?"), que los modelos leen como "¿qué mascota *reemplazó* Ramón?" (pregunta ambigua, mal diseñada por mí), y q13 (3 deportes en 4 sesiones).
