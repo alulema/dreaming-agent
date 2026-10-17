@@ -11,6 +11,13 @@ StoredTier = Literal["MTM", "LTM"]
 EntryKind = Literal["fact", "preference", "event", "summary"]
 EntryStatus = Literal["active", "superseded", "forgotten"]
 OpType = Literal["MERGE", "UPDATE", "PROMOTE", "FORGET"]
+# Normalised attribute keys emitted by the Writer. Entities alone don't connect contradictions
+# ("lives in Quito" vs "moved to Madrid" share no entity), but they share `user.location`.
+Topic = Literal[
+    "user.name", "user.location", "user.job", "user.family", "user.friends", "user.pets",
+    "user.health", "user.food", "user.sports", "user.hobbies", "user.travel", "user.education",
+    "user.plans", "user.preferences", "other",
+]
 
 
 def new_id() -> str:
@@ -39,6 +46,7 @@ class MemoryEntry(BaseModel):
     text: str
     kind: EntryKind = "fact"
     entities: list[str] = Field(default_factory=list)
+    topics: list[str] = Field(default_factory=list)
     source_turn_ids: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

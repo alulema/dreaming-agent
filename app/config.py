@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     stm_turns: int = 6
     top_k: int = 8
     selector_fallback_k: int = 3
+    # A new Writer entry this similar to an active MTM entry is not stored again: its turn is
+    # added to the existing entry's sources instead (reinforcement). > 1.0 disables it.
+    writer_dedup_threshold: float = 0.95
 
     # Dream
     cluster_threshold: float = 0.80

@@ -84,3 +84,54 @@ Prompt tipo Controller ("¿Te acuerdas cómo se llama mi perro?"), temperatura 0
   2. Probar umbrales de ~0.70 a 0.72: atrapan los UPDATE y dejan fuera lo no relacionado (<0.58), a cambio de clusters más grandes (vigilar `MAX_CLUSTER_SIZE`).
   3. Estas son frases sintéticas; hay que **re-medir con lo que realmente escriba el Writer** en la Fase 2.
 - La recuperación cruzada ES→EN funciona: las 4 consultas encuentran el hecho correcto en el top-1, con 0.59–0.71 frente a 0.46–0.51 del segundo. Ojo con cualquier umbral absoluto de recuperación: un acierto real puede puntuar solo ~0.6.
+
+## 2026-10-16 20:30 — Fase 2: primera conversación de 10 turnos (qwen2.5:7b, prompts v1)
+
+`scripts/demo_conversation.py`: usuaria ficticia "Lucía" (ES/EN, una paráfrasis, una mudanza con cambio de trabajo, small talk, dos preguntas de memoria).
+
+- **[RESULTADO]** El pipeline funciona de punta a punta. **37 llamadas JSON: 37 ok, 0 inválidas, 0 fallbacks** (con schema). Responde bien las preguntas de memoria: "Se llama Toby" y "Vives en Madrid y trabajas como analista de datos" (UPDATE resuelto en línea gracias a la fecha que el Selector ve en cada candidato).
+- **[HALLAZGO] Latencia (M1 Pro, 7B, en caliente):** respuesta ~7–8 s con memoria y ~3 s sin ella; ~12–14 s en total con el Writer. Por etapa: controller ~2 s, selector ~3 s, responder ~2 s, **writer ~4–6 s (la etapa más cara)**. El primer turno tardó 20 s por la carga en frío del LLM (9.9 s) y de bge-m3 (4.9 s).
+  → El Writer corre *después* de la respuesta; pasarlo a segundo plano bajaría la latencia percibida a la de la respuesta (anotado para la Fase 5).
+- **[FALLO] Controller:** `needs_memory=true` en **8/10 turnos**, incluidos los que solo cuentan algo nuevo ("Me llamo Lucía…", "Tengo un perro…"). El 7B ignora esa regla del prompt, y cada uno de esos turnos paga ~3–4 s extra de retriever+selector.
+- **[FALLO] Selector:** inyecta meta-comentarios inventados: "The name and age of the dog have **not changed**", "This preference has not changed". **Lo provocó nuestro prompt** ("when facts changed, say it changed"): el modelo lo aplica siempre. También conservó hechos irrelevantes (la enfermería para una pregunta sobre té, el café para la mudanza) y en un turno devolvió un índice fuera de rango (lo reparó el código).
+- **[FALLO] Responder:** "I **remember** you mentioning that you have a dog named Toby" en el mismo turno en que el usuario lo contaba por primera vez: finge recordar. Lo induce "who remembers past conversations" del system prompt.
+- **[FALLO] Writer — eco de recuerdos:** en las *preguntas* ("¿Cómo se llama mi perro?", "¿Dónde vivo ahora?") volvió a escribir los hechos que el asistente acababa de recitar → duplicados (Toby ×3, Madrid ×2, analista ×2, incluido "analyst **of data**"). El prompt le pide ignorar la respuesta del asistente; el 7B no lo hace. **La memoria se infla consigo misma.**
+- **[FALLO] Writer — omisiones y temas:** no guardó el nombre (Lucía), la raza (beagle, en el turno 2) ni la edad de Toby (5). Asignó temas erróneos: `user.sports` a la enfermería, `other` al beagle y al té.
+- **[HALLAZGO] Los `topics` funcionan para lo que se crearon:** "lives in Quito" y "moved to Madrid" comparten `user.location`; "nurse" y "data analyst" comparten `user.job`. El Dream podrá ver esas contradicciones aunque el coseno no las una. La MTM final (10 entradas) es un buen caso de prueba para la Fase 3: 3 MERGE posibles (Toby) y 2 UPDATE (ciudad, trabajo).
+
+## 2026-10-16 21:30 — Fase 2: cuatro iteraciones de prompts y una compuerta del Writer
+
+Misma conversación de 10 turnos, qwen2.5:7b. Resumen:
+
+| Iteración | Cambio | Entradas MTM | Entradas basura | Llamadas LLM | Tiempo medio por turno |
+|---|---|---|---|---|---|
+| v1 | prompts iniciales; el Writer ve mensaje + respuesta | 10 | ~4 (duplicados "eco") | 37 | ~12 s |
+| v2 | few-shot en el Controller; Selector sin "say it changed"; Responder "no finjas recordar"; el Writer ve el mensaje previo del asistente | 15 | ~6 | 37 | ~13 s |
+| v3 | el Writer ve **solo** el mensaje del usuario + dedup al escribir (≥0.95 → refuerzo) | 12 | ~4 | 37 | ~12 s |
+| v4 | ejemplos neutros en el Writer + `has_new_facts` + filtro de metadatos + **compuerta `shares_new_info` en el Controller** | **9** | **0** | **26** | **~7 s** |
+
+- **[HALLAZGO] ⭐ Fuga de los ejemplos del prompt.** Aislando el Writer, el 7B respondió a "Gracias, eso es todo por hoy." con `"The user moved to Madrid."`, y a "¿Te acuerdas de cómo se llama mi perro?" con `"The user's dog is named Toby."`. **Esos textos eran los ejemplos del propio prompt.** Cuando no hay nada que extraer, el modelo copia el ejemplo.
+  - Mi usuaria de prueba usaba los mismos nombres que los ejemplos (Toby, Madrid), así que la fuga **se hacía pasar por un "eco" de la conversación**. El diagnóstico "eco" de v1/v2 fue **al menos en parte equivocado**: algunas de esas entradas eran copia literal del ejemplo, no de la respuesta.
+  - Lecciones: (1) los ejemplos de los prompts deben usar entidades que **nunca** aparezcan en los datos de evaluación; (2) incluir ejemplos explícitos de salida vacía. → En la Fase 4: un test que verifique que ninguna entidad de los ejemplos de los prompts aparece en `bench/`.
+- **[HALLAZGO] Ajustar el prompt del Writer no bastó:** con ejemplos neutros dejó de inventar, pero ante preguntas personales seguía escribiendo meta-entradas ("The user asked about their current location and job", "The user's dog's name is not stated") aun con un campo `has_new_facts` previo (2/2 preguntas → `true`).
+  - **[DECISIÓN] Compuerta en el Controller:** nuevo campo `shares_new_info`; si es `false`, el Writer **no se ejecuta**. Separar "¿esto cuenta algo?" (clasificar intención, lo que ya hace el Controller) de "extrae los hechos" funcionó donde el prompt del Writer fallaba: 10/11 bien en aislamiento (falló una preferencia; se añadió un ejemplo de gustos) y 10/10 en la corrida completa.
+  - Efecto colateral bueno: el mismo prompt reescrito hizo que `needs_memory` dejara de dispararse con los enunciados (de 8/10 a 2/10, justo las dos preguntas). **Llamadas por turno: 3.7 → 2.6; latencia media: ~12 s → ~7 s.**
+  - Divergencia frente al paper/spec: el Controller decide dos cosas (recuperar y escribir). Queda como defensa en profundidad: `has_new_facts` + regex de metadatos en el Writer.
+- **[DECISIÓN] Dedup al escribir (≥0.95 con una MTM activa → no se duplica; se añade el turno a `source_turn_ids`).** Es fiel al paper (Alg. 2: el Writer fusiona o reescribe entradas repetitivas) y aporta la evidencia "visto en ≥2 turnos" que necesita PROMOTE. Las paráfrasis por debajo de 0.95 siguen siendo trabajo del Dream.
+- **[DECISIÓN]** El Selector recibe candidatos numerados `[1]..[k]` con fecha y devuelve índices (no uuids). Con las fechas visibles resolvió bien "¿Dónde vivo ahora?" → Madrid, sin necesidad de Dream.
+- **[FALLO] pendiente** (no bloquea):
+  - "Moved to Madrid **for a new job as a data analyst**" quedó como una sola entrada con dos temas, a pesar del ejemplo multi-hecho. El Dream tendrá que manejar una entrada que actualiza a dos (Quito→Madrid y enfermera→analista).
+  - El Controller a veces emite `queries` con `needs_memory=false` (incoherente, sin efecto).
+  - Español del 7B: "me acuero" (v1) y "hace calor en Quito en julio" (Quito ronda 10–20 °C). No es memoria, pero el lector lo notará.
+- **[RESULTADO] ✅ Criterio de la Fase 2 (parte pipeline):** una conversación de 10 turnos genera entradas MTM razonables (9: nombre, ciudad, perro, raza, edad, trabajo, turnos, preferencia, mudanza+trabajo) y la traza tiene la latencia por etapa. Prompts finales: controller/selector/responder/writer, con su hash en cada traza.
+
+## 2026-10-16 22:15 — Fase 2: API, UI, tests · cierre de fase
+
+- **[DECISIÓN] API:** `/chat`, `/session/new`, `/memory`, `/reset`, `/health`, `/models` y `/model` (selector de modelo en caliente). Un `asyncio.Lock` serializa los turnos: es un demo de un solo usuario y así las escrituras de memoria quedan ordenadas. Un timeout de Ollama → 504 con un mensaje legible.
+- **[DECISIÓN] UI** (`app/static/index.html`, vanilla, sin build): chat + "ver traza" (Controller, candidatos con su score y los que conservó el Selector en verde, contexto comprimido, Writer, barras de latencia por etapa, versión de cada prompt) + pestañas STM/MTM/LTM con contadores; las entradas nuevas se resaltan. Usa los tokens de `demo-theme.css` con fallbacks propios; textos ES/EN según el navegador. Botón Dream deshabilitado hasta la Fase 3.
+- **[DESAFÍO]** Las barras de latencia salían como `[object HTMLSpanElement]`: el helper `el()` hacía `kids.flat()`, que aplana un solo nivel, y `stages.map(...)` devolvía arrays de arrays. Solución: `flat(Infinity)`. Se detectó probando la UI en Chrome, no en los tests de API.
+- **[RESULTADO] Prueba en navegador** (7B, BD nueva): "Hola, soy Marco y tengo una gata llamada Pelusa" → 2 entradas MTM (nombre y gata), 3.2 s. "¿Cómo se llama mi mascota?" → "Tu mascota se llama Pelusa, una gata." (6.8 s, Writer omitido). "¿Te acuerdas de cómo me llamo?" → correcto (7.2 s: controller 2.9 s, retriever 0.15 s, selector 1.8 s, responder 2.3 s).
+- **[FALLO]** El 7B volvió a escribir "me **acuero**" (por "me acuerdo"): segunda vez en el día. Parece un error sistemático de qwen2.5:7b en español con ese verbo. Anotar para el post.
+- **[HALLAZGO] UX:** al recargar la página se pierde el historial visible del chat, pero la STM sigue en el servidor (la sesión vive en `sessionStorage`). Aceptable para el MVP.
+- **[RESULTADO]** 42 tests en verde (+18: render de prompts, reparaciones del Controller, mapeo/fallback del Selector, `clean` del Writer, merge del Retriever, Agent con un LLM falso con guion para turnos de enunciado/pregunta/dedup/fallback/ventana STM, endpoints). `ruff` limpio.
+- **[RESULTADO] ✅ Fase 2 completa.** Criterio: la conversación de 10 turnos genera entradas MTM razonables (9 de 9 reales) y la traza muestra la latencia por etapa.

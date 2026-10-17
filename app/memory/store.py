@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS entries (
     text TEXT NOT NULL,
     kind TEXT NOT NULL,
     entities TEXT NOT NULL,
+    topics TEXT NOT NULL,
     source_turn_ids TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -119,9 +120,12 @@ CREATE TABLE IF NOT EXISTS dreams (
 """
 
 _ENTRY_COLS = (
-    "id, tier, text, kind, entities, source_turn_ids, created_at, updated_at, "
+    "id, tier, text, kind, entities, topics, source_turn_ids, created_at, updated_at, "
     "access_count, last_accessed_at, status, superseded_by, embedding"
 )
+
+
+_N_COLS = len(_ENTRY_COLS.split(","))
 
 
 def _dt(value: str | None) -> datetime | None:
@@ -206,7 +210,8 @@ class SQLiteStore(MemoryStore):
     def _entry_params(e: MemoryEntry) -> tuple:
         return (
             e.id, e.tier, e.text, e.kind, json.dumps(e.entities, ensure_ascii=False),
-            json.dumps(e.source_turn_ids), e.created_at.isoformat(), e.updated_at.isoformat(),
+            json.dumps(e.topics), json.dumps(e.source_turn_ids),
+            e.created_at.isoformat(), e.updated_at.isoformat(),
             e.access_count, e.last_accessed_at.isoformat() if e.last_accessed_at else None,
             e.status, e.superseded_by, e.embedding,
         )
@@ -215,7 +220,8 @@ class SQLiteStore(MemoryStore):
     def _row_to_entry(r: sqlite3.Row) -> MemoryEntry:
         return MemoryEntry(
             id=r["id"], tier=r["tier"], text=r["text"], kind=r["kind"],
-            entities=json.loads(r["entities"]), source_turn_ids=json.loads(r["source_turn_ids"]),
+            entities=json.loads(r["entities"]), topics=json.loads(r["topics"]),
+            source_turn_ids=json.loads(r["source_turn_ids"]),
             created_at=_dt(r["created_at"]), updated_at=_dt(r["updated_at"]),
             access_count=r["access_count"], last_accessed_at=_dt(r["last_accessed_at"]),
             status=r["status"], superseded_by=r["superseded_by"], embedding=r["embedding"],
@@ -224,7 +230,7 @@ class SQLiteStore(MemoryStore):
     def add_entry(self, entry: MemoryEntry) -> None:
         if not entry.embedding:
             raise ValueError("entry has no embedding")
-        self._exec(f"INSERT INTO entries ({_ENTRY_COLS}) VALUES ({', '.join('?' * 13)})",
+        self._exec(f"INSERT INTO entries ({_ENTRY_COLS}) VALUES ({', '.join('?' * _N_COLS)})",
                    self._entry_params(entry))
 
     def update_entry(self, entry: MemoryEntry) -> None:

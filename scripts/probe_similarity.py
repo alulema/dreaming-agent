@@ -50,7 +50,7 @@ async def main() -> None:
     for text, v in zip(MEMORY, await emb.embed(MEMORY), strict=True):
         store.add_entry(MemoryEntry(text=text, embedding=to_bytes(v)))
     for q in QUERIES:
-        (top, score), (second, s2) = store.search(await emb.embed_one(q), ["MTM"], k=2)
+        (top, score), (_, s2) = store.search(await emb.embed_one(q), ["MTM"], k=2)
         print(f"  {q!r:32} -> {top.text!r} ({score:.3f}) | 2nd {s2:.3f}")
     await llm.aclose()
 

@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>El agente que sueña</title>
+<link rel="stylesheet" href="https://alexisalulema.com/demo-theme.css">
+<style>
+  /* Site theme tokens with local fallbacks (the demo must work if the theme doesn't load). */
+  :root {
+    --bg: var(--color-bg, #0e1116);
+    --card: var(--color-bg-card, #161b22);
+    --border: var(--color-border, #2a313c);
+    --text: var(--color-text, #e6edf3);
+    --muted: var(--color-text-muted, #8b949e);
+    --accent: var(--color-accent, #8b7cf6);
+    --sans: var(--font-sans, Inter, system-ui, -apple-system, Segoe UI, sans-serif);
+    --mono: var(--font-mono, "JetBrains Mono", ui-monospace, Menlo, monospace);
+    --r: var(--radius, 10px);
+    --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: var(--color-bg, #f6f8fa); --card: var(--color-bg-card, #ffffff);
+      --border: var(--color-border, #d0d7de); --text: var(--color-text, #1f2328);
+      --muted: var(--color-text-muted, #59636e); --accent: var(--color-accent, #6e56cf);
+      --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.5 var(--sans); display: flex; flex-direction: column; }
+  button, select, textarea { font: inherit; color: inherit; }
+  button { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); padding: 6px 12px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  select { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); padding: 6px 8px; }
+
+  header { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 17px; margin: 0 auto 0 0; }
+  .banner { font-size: 12px; color: var(--muted); padding: 6px 16px; border-bottom: 1px solid var(--border); text-align: center; }
+  .banner a { color: inherit; }
+
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); } }
+  section { min-height: 0; display: flex; flex-direction: column; }
+  #chat { border-right: 1px solid var(--border); }
+  #log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 85%; padding: 8px 12px; border-radius: var(--r); background: var(--card); border: 1px solid var(--border); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.user { align-self: flex-end; background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
+  .msg.err { border-color: var(--bad); color: var(--bad); }
+  .meta { font-size: 12px; color: var(--muted); margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .meta button { padding: 0 8px; font-size: 12px; }
+  .badge { font-size: 11px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--border); }
+  .badge.warn { color: var(--warn); border-color: var(--warn); }
+  .empty { color: var(--muted); text-align: center; margin: auto; max-width: 420px; }
+  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+  textarea { flex: 1; resize: none; height: 44px; background: var(--card); border: 1px solid var(--border); border-radius: var(--r); padding: 10px; }
+
+  .trace { margin-top: 8px; font-size: 12.5px; white-space: normal; border-top: 1px dashed var(--border); padding-top: 8px; display: grid; gap: 8px; }
+  .trace h4 { margin: 0 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .trace code, .mono { font-family: var(--mono); font-size: 12px; }
+  .bars { display: grid; grid-template-columns: 80px 1fr 56px; gap: 3px 8px; align-items: center; }
+  .bar { height: 8px; border-radius: 4px; background: var(--accent); min-width: 2px; }
+  .cand { display: flex; gap: 6px; }
+  .cand.kept { color: var(--ok); }
+  .cand:not(.kept) { color: var(--muted); }
+
+  #memory { min-height: 0; }
+  .tabs { display: flex; gap: 4px; padding: 10px 16px 0; border-bottom: 1px solid var(--border); }
+  .tab { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 6px 10px; }
+  .tab[aria-selected="true"] { border-bottom-color: var(--accent); font-weight: 600; }
+  .count { font-size: 11px; color: var(--muted); margin-left: 4px; }
+  #entries { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .entry { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); padding: 8px 10px; }
+  .entry .meta { margin-top: 2px; }
+  .entry.new { border-color: var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌙 <span data-i18n="title"></span></h1>
+  <label class="mono" style="font-size:12px;color:var(--muted)" for="model" data-i18n="model"></label>
+  <select id="model" aria-label="model"></select>
+  <button id="newSession" data-i18n="newSession"></button>
+  <button id="dream" class="primary" disabled data-i18n-title="dreamSoon">🌙 Dream</button>
+</header>
+<div class="banner"><span data-i18n="banner"></span> · <a href="https://arxiv.org/abs/2604.07798" target="_blank" rel="noopener">arXiv:2604.07798</a></div>
+<main>
+  <section id="chat">
+    <div id="log"><p class="empty" id="emptyChat" data-i18n="emptyChat"></p></div>
+    <form id="form">
+      <textarea id="input" required data-i18n-placeholder="placeholder"></textarea>
+      <button class="primary" id="send" data-i18n="send"></button>
+    </form>
+  </section>
+  <section id="memory">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tier="stm" aria-selected="false">STM<span class="count" id="c-stm">0</span></button>
+      <button class="tab" role="tab" data-tier="mtm" aria-selected="true">MTM<span class="count" id="c-mtm">0</span></button>
+      <button class="tab" role="tab" data-tier="ltm" aria-selected="false">LTM<span class="count" id="c-ltm">0</span></button>
+    </div>
+    <div id="entries"></div>
+  </section>
+</main>
+<script>
+const I18N = {
+  es: {
+    title: "El agente que sueña", model: "modelo", newSession: "Nueva sesión", send: "Enviar",
+    dreamSoon: "Consolidación offline (próximamente)",
+    banner: "Modelo local vía Ollama · sin APIs externas · inspirado en LightMem",
+    emptyChat: "Cuéntale algo sobre ti y luego pregúntale. La memoria aparece a la derecha: STM (conversación actual), MTM (hechos extraídos), LTM (conocimiento consolidado).",
+    placeholder: "Escribe un mensaje…", thinking: "pensando", trace: "ver traza", hideTrace: "ocultar traza",
+    controller: "Controller", retrieval: "Recuperación + Selector", writer: "Writer", latency: "Latencia",
+    noMemory: "no necesita memoria", skipped: "omitido", nothing: "(nada)", calls: "llamadas LLM",
+    fallback: "fallback", repairs: "reparaciones", newEntry: "nueva", reinforced: "reforzada",
+    stmEmpty: "Sin turnos en esta sesión.", mtmEmpty: "Aún no hay hechos en MTM.", ltmEmpty: "LTM vacía: se llena con el Dream.",
+    access: "accesos", turns: "turnos", newSessionDone: "Nueva sesión: la STM se vació; MTM y LTM se conservan.",
+  },
+  en: {
+    title: "The dreaming agent", model: "model", newSession: "New session", send: "Send",
+    dreamSoon: "Offline consolidation (coming soon)",
+    banner: "Local model via Ollama · no external APIs · inspired by LightMem",
+    emptyChat: "Tell it something about yourself, then ask. Memory shows on the right: STM (current conversation), MTM (extracted facts), LTM (consolidated knowledge).",
+    placeholder: "Type a message…", thinking: "thinking", trace: "show trace", hideTrace: "hide trace",
+    controller: "Controller", retrieval: "Retrieval + Selector", writer: "Writer", latency: "Latency",
+    noMemory: "no memory needed", skipped: "skipped", nothing: "(nothing)", calls: "LLM calls",
+    fallback: "fallback", repairs: "repairs", newEntry: "new", reinforced: "reinforced",
+    stmEmpty: "No turns in this session.", mtmEmpty: "No MTM facts yet.", ltmEmpty: "LTM is empty: the Dream fills it.",
+    access: "accesses", turns: "turns", newSessionDone: "New session: STM cleared; MTM and LTM are kept.",
+  },
+};
+const lang = (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en";
+document.documentElement.lang = lang;
+const T = (k) => I18N[lang][k] ?? k;
+for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = T(el.dataset.i18n);
+for (const el of document.querySelectorAll("[data-i18n-placeholder]")) el.placeholder = T(el.dataset.i18nPlaceholder);
+for (const el of document.querySelectorAll("[data-i18n-title]")) el.title = T(el.dataset.i18nTitle);
+
+const $ = (s) => document.querySelector(s);
+const el = (tag, props = {}, ...kids) => {
+  const n = Object.assign(document.createElement(tag), props);
+  for (const k of kids.flat(Infinity)) if (k != null) n.append(k);
+  return n;
+};
+const store = {
+  get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
+};
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+  return r.json();
+}
+
+let sessionId = store.get("sessionId");
+let tier = "mtm";
+let lastMemory = null;
+let freshIds = new Set();
+
+async function ensureSession(force = false) {
+  if (!sessionId || force) {
+    sessionId = (await api("/session/new", {})).session_id;
+    store.set("sessionId", sessionId);
+  }
+}
+
+function addMsg(role, text, cls = "") {
+  $("#emptyChat")?.remove();
+  const m = el("div", { className: `msg ${role} ${cls}` }, text);
+  $("#log").append(m);
+  $("#log").scrollTop = $("#log").scrollHeight;
+  return m;
+}
+
+function fmtMs(ms) { return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`; }
+
+function renderTrace(t) {
+  const box = el("div", { className: "trace" });
+  const c = t.controller;
+  box.append(el("div", {}, el("h4", {}, T("controller")),
+    c.needs_memory ? el("div", {}, "needs_memory → ", el("code", {}, JSON.stringify(c.queries)), ` · ${c.tiers.join("+")}`)
+                   : el("div", {}, T("noMemory")),
+    el("div", {}, `shares_new_info: ${c.shares_new_info}`)));
+
+  if (t.selector) {
+    const kept = new Set(t.selector.kept_ids);
+    const list = t.retrieval.candidates.map((x) =>
+      el("div", { className: `cand ${kept.has(x.id) ? "kept" : ""}` },
+        el("span", { className: "mono" }, `${kept.has(x.id) ? "✓" : "·"} ${x.score.toFixed(2)}`), `[${x.tier}] ${x.text}`));
+    box.append(el("div", {}, el("h4", {}, T("retrieval")),
+      list.length ? list : el("div", {}, T("nothing")),
+      t.selector.context ? el("div", {}, "→ ", el("em", {}, t.selector.context)) : null));
+  }
+
+  const w = t.writer;
+  box.append(el("div", {}, el("h4", {}, T("writer")),
+    w.skipped ? el("div", {}, T("skipped")) :
+    [...w.entries.map((e) => el("div", {}, `+ ${e.text} `, el("span", { className: "mono" }, e.topics.join(", ")))),
+     ...w.reinforced.map((r) => el("div", {}, `= ${r.text} (${T("reinforced")}, ${r.score})`)),
+     ...(w.entries.length + w.reinforced.length ? [] : [el("div", {}, T("nothing"))])]));
+
+  const lat = t.latency_ms;
+  const stages = ["controller", "retriever", "selector", "responder", "writer"].filter((k) => k in lat);
+  const max = Math.max(...stages.map((k) => lat[k]), 1);
+  box.append(el("div", {}, el("h4", {}, `${T("latency")} · ${t.llm_calls} ${T("calls")}`),
+    el("div", { className: "bars" }, stages.map((k) => [
+      el("span", { className: "mono" }, k),
+      el("div", { className: "bar", style: `width:${(lat[k] / max) * 100}%` }),
+      el("span", { className: "mono" }, fmtMs(lat[k])),
+    ]))));
+  box.append(el("div", { className: "mono", style: "color:var(--muted)" },
+    `${t.model} · prompts ${Object.entries(t.prompt_versions).map(([k, v]) => `${k}@${v}`).join(" ")}`));
+  return box;
+}
+
+function addReply(res) {
+  const t = res.trace;
+  const m = addMsg("bot", res.reply);
+  const meta = el("div", { className: "meta" }, `${fmtMs(t.latency_ms.reply)} · ${t.llm_calls} ${T("calls")}`);
+  if (t.fallbacks.length) meta.append(el("span", { className: "badge warn" }, `${T("fallback")}: ${t.fallbacks.join(", ")}`));
+  if (Object.keys(t.repairs).length) meta.append(el("span", { className: "badge warn" }, `${T("repairs")}: ${Object.keys(t.repairs).join(", ")}`));
+  if (t.writer.entries.length) meta.append(el("span", { className: "badge" }, `+${t.writer.entries.length} MTM`));
+  let traceBox = null;
+  const btn = el("button", { type: "button", textContent: T("trace") });
+  btn.onclick = () => {
+    if (traceBox) { traceBox.remove(); traceBox = null; btn.textContent = T("trace"); return; }
+    traceBox = renderTrace(t); m.append(traceBox); btn.textContent = T("hideTrace");
+  };
+  meta.append(btn);
+  m.append(meta);
+  freshIds = new Set(t.writer.entries.map((e) => e.id));
+}
+
+function renderMemory() {
+  if (!lastMemory) return;
+  for (const k of ["stm", "mtm", "ltm"]) $(`#c-${k}`).textContent = lastMemory[k].length;
+  const box = $("#entries");
+  box.replaceChildren();
+  const items = lastMemory[tier];
+  if (!items.length) { box.append(el("p", { className: "empty" }, T(`${tier}Empty`))); return; }
+  if (tier === "stm") {
+    for (const t of items) box.append(el("div", { className: "entry" }, el("div", { className: "meta" }, t.role), t.content));
+    return;
+  }
+  for (const e of [...items].reverse()) {
+    box.append(el("div", { className: `entry ${freshIds.has(e.id) ? "new" : ""}` }, e.text,
+      el("div", { className: "meta" },
+        el("span", { className: "badge" }, e.kind),
+        ...e.topics.map((x) => el("span", { className: "mono" }, x)),
+        `· ${e.access_count} ${T("access")} · ${e.source_turn_ids.length} ${T("turns")}`)));
+  }
+}
+
+async function refreshMemory() {
+  lastMemory = await api(`/memory?session_id=${encodeURIComponent(sessionId)}`);
+  renderMemory();
+}
+
+for (const b of document.querySelectorAll(".tab")) {
+  b.onclick = () => {
+    tier = b.dataset.tier;
+    for (const x of document.querySelectorAll(".tab")) x.setAttribute("aria-selected", x === b);
+    renderMemory();
+  };
+}
+
+$("#form").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const text = $("#input").value.trim();
+  if (!text) return;
+  $("#input").value = "";
+  $("#send").disabled = true;
+  addMsg("user", text);
+  const pending = addMsg("bot", `${T("thinking")}…`);
+  const t0 = performance.now();
+  const timer = setInterval(() => { pending.textContent = `${T("thinking")}… ${((performance.now() - t0) / 1000).toFixed(0)} s`; }, 500);
+  try {
+    await ensureSession();
+    const res = await api("/chat", { session_id: sessionId, message: text });
+    pending.remove();
+    addReply(res);
+    await refreshMemory();
+  } catch (e) {
+    pending.remove();
+    addMsg("bot", `⚠️ ${e.message}`, "err");
+  } finally {
+    clearInterval(timer);
+    $("#send").disabled = false;
+    $("#input").focus();
+  }
+};
+$("#input").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); $("#form").requestSubmit(); }
+});
+
+$("#newSession").onclick = async () => {
+  await ensureSession(true);
+  $("#log").replaceChildren();
+  addMsg("bot", T("newSessionDone"), "");
+  freshIds = new Set();
+  await refreshMemory();
+};
+
+$("#model").onchange = async (ev) => {
+  try { await api("/model", { name: ev.target.value }); }
+  catch (e) { addMsg("bot", `⚠️ ${e.message}`, "err"); }
+};
+
+(async () => {
+  try {
+    await ensureSession();
+    const m = await api("/models");
+    const sel = $("#model");
+    for (const name of m.available.length ? m.available : [m.current])
+      sel.append(el("option", { value: name, textContent: name, selected: name === m.current }));
+    await refreshMemory();
+  } catch (e) {
+    addMsg("bot", `⚠️ ${e.message}`, "err");
+  }
+})();
+</script>
+</body>
+</html>

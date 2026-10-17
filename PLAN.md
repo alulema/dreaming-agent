@@ -38,8 +38,9 @@ Regla: **no se avanza de fase sin cumplir sus criterios de aceptación.** Cada f
 - `app/main.py`: FastAPI con `GET /health` (Ollama arriba, modelos presentes)
 - **✅ Aceptación:** `pytest` pasa los tests de `llm.py` (mock de httpx: válido, inválido, timeout → fallback) y de `store.py`; `/health` lista los modelos
 
-## Fase 2 — Pipeline online
+## Fase 2 — Pipeline online ✅ (2026-10-16)
 - Prompts: `controller.md`, `selector.md`, `responder.md`, `writer.md`
+- **Cambios respecto al plan** (ver LOG): el Controller también emite `shares_new_info`, que decide si corre el Writer; el Writer ve solo el mensaje del usuario; dedup al escribir (≥0.95 → refuerzo); el Selector trabaja con índices, no uuids
 - `pipeline/`: Controller (si `needs_memory=false` no recupera), Retriever (código: top-k por consulta, dedupe, sube `access_count`), Selector, Responder y Writer, cada uno con el fallback de la spec §3.2
 - `pipeline/agent.py`: orquesta todo y arma el `trace` (salida por módulo, ids, fallbacks y ms por etapa)
 - Endpoints `/chat`, `/session/new`, `/memory` y `/reset`
