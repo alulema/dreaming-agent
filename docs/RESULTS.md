@@ -89,3 +89,26 @@ Tiempo de respuesta percibido (sin el Writer, que corre después): C/D ~4.5 s fr
 - La arquitectura LightMem (Controller/Selector/Writer + consolidación) **no le gana a un RAG ingenuo** con un modelo pequeño en este caso: 79 vs 88 %, con 2.3× la latencia y 2.9× las llamadas.
 - Cada llamada extra al LLM es **otra oportunidad de reescribir mal un hecho**. B nunca reescribe nada: guarda lo que dijo el usuario.
 - El Dream es un buen **compresor** (−29 % de entradas) y a veces **repara** errores del Writer, pero de forma **no fiable**: misma configuración, de 71 a 89 % según la corrida.
+
+## v2 con `qwen2.5:3b-instruct` (2026-10-17)
+
+Mismo sistema (v2), datos y protocolo; solo cambia el modelo (todos los módulos). El 3B está más cerca del tamaño que usa el paper (1–1.5B).
+
+| Condición | 7B | **3B** | Hecho simple | Actualizado | Multi-sesión | Temporal | Turno p50 / p95 | Pregunta p50 |
+|---|---|---|---|---|---|---|---|---|
+| A — sin memoria | 18 | 18 ± 0 | 0 | 0 | 0 | 0 | 0.6 s / 1.3 s | 0.5 s |
+| B — RAG ingenuo | 88 ± 2 | **93 ± 0** | 100 | 100 | 83 | 80 | 1.4 s / 2.0 s | 1.0 s |
+| C — pipeline | 79 ± 0 | **58 ± 2** | 67 | 72 ± 10 | 33 | 20 | 2.3 s / 7.8 s | 3.6 s |
+| D — pipeline + Dream | 79 ± 9 | **49 ± 7** | 50 | 44 ± 10 | 28 ± 25 | 27 ± 12 | 2.3 s / 7.2 s | 3.8 s |
+
+Memoria final: B 45 / 584 · C 42 / 422 · D 23 ± 5 / 309 ± 15 (entradas / ~tokens). Dream: 17 ± 5 ops aplicadas y 37 ± 4 rechazadas por corrida; 5 timeouts del Consolidator en total (generaciones de >60 s, probablemente bucles de repetición).
+
+### Lectura
+1. **Con 3B la brecha se dispara:** B − C pasa de 9 puntos (7B) a **35** (3B), y el Dream resta otros 9. **El RAG ingenuo con 3B (93 %) es la mejor configuración de todo el estudio**, y la más rápida (1.4 s por turno).
+2. **El modelo pequeño lee bien y escribe mal.** Como *lector* de frases literales (B), el 3B iguala o supera al 7B. Como *escritor* de memoria (C/D) se desmorona:
+   - **La compuerta pierde hechos:** el Controller marcó como "sin información nueva" el **58 %** de los turnos (78/135), entre ellos el nombre, el cumpleaños y el loro. C responde "You haven't told me about your name yet".
+   - **Las fugas que el grounding no atrapa:** "teacher" (3), "bakery" (6) y "**cat**" (9 veces, para un loro), todos de los ejemplos de los prompts. Son sustantivos comunes, el límite conocido del grounding.
+3. **El Dream de 3B consolida la basura:** "The user works as a teacher (previously liked the bakery)" (dos fugas fusionadas), "The user is allergic to peanuts **and goes to the swimming pool**", "The user took an online course in UX design **and learned to whistle a new song**" (lo del loro), "The user **moved to the Estudio Faro**", "The user has **friends named Kiwi and Ramón**". Ninguna inventa nombres, así que todas pasan el grounding.
+
+### Conclusión para el post
+> Con modelos locales pequeños, **la mejor memoria es la que menos reescribe**. El valor de la arquitectura LightMem depende de que sus módulos sean fiables (el paper afina el Selector con LoRA y responde con GPT-4o-mini); sin eso, cada etapa que reescribe la memoria acumula errores, y la consolidación offline los vuelve permanentes. A menor modelo, peor: 7B pierde 9 puntos frente a un RAG ingenuo; 3B pierde 35.

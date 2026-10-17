@@ -3,6 +3,15 @@
 Mean ± sd over runs. Accuracy in %, latency in seconds (p50 / p95 per user turn while chatting; questions are answered read-only).
 
 
+## qwen2.5:3b-instruct · format=schema · v2
+
+| Cond. | Runs | Total | Single | Updated | Multi | Temporal | Abstain | Turn p50 | Turn p95 | Question p50 | LLM calls/turn | Memory (entries / tokens) | Fallbacks | Dream ops ✓/✗ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A | 3 | 18 ± 0 | 0 ± 0 | 0 ± 0 | 0 ± 0 | 0 ± 0 | 100 ± 0 | 0.6 ± 0.0 | 1.3 ± 0.1 | 0.5 ± 0.0 | 1.00 ± 0.00 | 0 ± 0 / 0 ± 0 | 0 ± 0 | 0 ± 0 / 0 ± 0 |
+| B | 3 | 93 ± 0 | 100 ± 0 | 100 ± 0 | 83 ± 0 | 80 ± 0 | 100 ± 0 | 1.4 ± 0.1 | 2.0 ± 0.2 | 1.0 ± 0.1 | 1.00 ± 0.00 | 45 ± 0 / 584 ± 0 | 0 ± 0 | 0 ± 0 / 0 ± 0 |
+| C | 3 | 58 ± 2 | 67 ± 0 | 72 ± 10 | 33 ± 0 | 20 ± 0 | 100 ± 0 | 2.3 ± 0.2 | 7.8 ± 1.2 | 3.6 ± 0.2 | 2.53 ± 0.00 | 42 ± 1 / 422 ± 5 | 0 ± 0 | 0 ± 0 / 0 ± 0 |
+| D | 3 | 49 ± 7 | 50 ± 0 | 44 ± 10 | 28 ± 25 | 27 ± 12 | 100 ± 0 | 2.3 ± 0.1 | 7.2 ± 0.3 | 3.8 ± 0.3 | 2.52 ± 0.02 | 23 ± 5 / 309 ± 15 | 2 ± 2 | 17 ± 5 / 37 ± 4 |
+
 ## qwen2.5:7b-instruct · format=schema · v1
 
 | Cond. | Runs | Total | Single | Updated | Multi | Temporal | Abstain | Turn p50 | Turn p95 | Question p50 | LLM calls/turn | Memory (entries / tokens) | Fallbacks | Dream ops ✓/✗ |

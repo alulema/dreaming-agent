@@ -276,3 +276,12 @@ Todas son **flags de configuración** (v1 sigue siendo reproducible con `RETRIEV
 - **[HALLAZGO]** Ningún FORGET dañino en v2 (la protección funcionó): el único FORGET aplicado en D1 fue "ran their first half marathon" (un evento sin tema protegido). Discutible: era un logro, no ruido.
 - **[RESULTADO] ✅ Fase 4 completa.** Criterio: `summary.csv` con las 4 condiciones × 3 corridas para al menos un modelo (en realidad dos versiones del sistema, v1 y v2).
 - Pendiente opcional: correr 3B (el tamaño del paper) en v2. La validación de desarrollo ya anticipa que su Dream es dañino.
+
+## 2026-10-17 09:00 — Fase 4 (extra): v2 con 3B
+
+- **[RESULTADO]** qwen2.5:3b, 3 corridas: A 18 · **B 93 ± 0** · C 58 ± 2 · D 49 ± 7. Turno p50: B 1.4 s · C/D 2.3 s. Detalle en `docs/RESULTS.md`.
+- **[HALLAZGO] ⭐ El modelo pequeño lee bien y escribe mal:** como lector de frases literales (B) el 3B supera al 7B (93 vs 88); como escritor de memoria se desmorona. La brecha B − C es de 9 puntos con 7B y de **35 con 3B**.
+- **[HALLAZGO]** La compuerta `shares_new_info` del 3B salta el Writer en el **58 %** de los turnos (78/135): pierde nombre, cumpleaños, loro.
+- **[HALLAZGO]** Fugas de ejemplos que el grounding no atrapa (sustantivos comunes): "teacher" ×3, "bakery" ×6, "cat" ×9. Confirma el límite anotado en v2.
+- **[HALLAZGO]** El Dream de 3B *fusiona la basura con hechos reales*: "allergic to peanuts and goes to the swimming pool", "took an online course in UX design and learned to whistle a new song", "moved to the Estudio Faro", "friends named Kiwi and Ramón". Memoria −45 % frente a C, exactitud −9 puntos.
+- **[FALLO]** 5 timeouts del Consolidator de 3B (generaciones de >60 s sin cerrar el JSON; el Mac estaba despierto). El fallback (no aplicar ops en ese cluster) funcionó.
