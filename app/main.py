@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.dream.dreamer import run_dream
 from app.llm import OllamaClient
 from app.memory.embed import Embedder
 from app.memory.models import new_id
@@ -113,6 +114,21 @@ async def memory(request: Request, session_id: str | None = None) -> dict:
         "ltm": [e.model_dump(mode="json") for e in store.list_entries(["LTM"])],
         "stats": store.stats(),
     }
+
+
+@app.post("/dream")
+async def dream(request: Request) -> dict:
+    st = request.app.state
+    async with st.lock:
+        try:
+            return await run_dream(st.store, st.embedder, st.llm, st.settings)
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"Model server error during the Dream: {e!r}") from e
+
+
+@app.get("/dreams")
+async def dreams(request: Request) -> dict:
+    return {"dreams": list(reversed(request.app.state.store.list_dreams()))}
 
 
 @app.post("/reset")

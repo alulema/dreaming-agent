@@ -76,6 +76,23 @@
   .entry { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); padding: 8px 10px; }
   .entry .meta { margin-top: 2px; }
   .entry.new { border-color: var(--ok); }
+
+  .dream { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; display: grid; gap: 8px; }
+  .dream > summary { cursor: pointer; }
+  .dream h3 { margin: 0; font-size: 14px; }
+  .stats { font-size: 12px; color: var(--muted); }
+  .op { border-left: 3px solid var(--border); padding: 2px 0 2px 10px; display: grid; gap: 2px; }
+  .op.MERGE { border-left-color: var(--warn); }
+  .op.UPDATE, .op.PROMOTE { border-left-color: var(--ok); }
+  .op.FORGET { border-left-color: var(--bad); }
+  .op .kind { font-family: var(--mono); font-size: 11px; font-weight: 600; }
+  .op.MERGE .kind { color: var(--warn); } .op.UPDATE .kind, .op.PROMOTE .kind { color: var(--ok); } .op.FORGET .kind { color: var(--bad); }
+  .add { color: var(--ok); }
+  .del { color: var(--bad); text-decoration: line-through; opacity: .85; }
+  .why { font-size: 12px; color: var(--muted); font-style: italic; }
+  .warnbox { color: var(--warn); font-size: 12.5px; }
+  details > summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
+  .rej { font-size: 12.5px; padding: 4px 0; border-top: 1px dashed var(--border); }
 </style>
 </head>
 <body>
@@ -84,7 +101,7 @@
   <label class="mono" style="font-size:12px;color:var(--muted)" for="model" data-i18n="model"></label>
   <select id="model" aria-label="model"></select>
   <button id="newSession" data-i18n="newSession"></button>
-  <button id="dream" class="primary" disabled data-i18n-title="dreamSoon">🌙 Dream</button>
+  <button id="dream" class="primary" data-i18n-title="dreamTip">🌙 Dream</button>
 </header>
 <div class="banner"><span data-i18n="banner"></span> · <a href="https://arxiv.org/abs/2604.07798" target="_blank" rel="noopener">arXiv:2604.07798</a></div>
 <main>
@@ -100,6 +117,7 @@
       <button class="tab" role="tab" data-tier="stm" aria-selected="false">STM<span class="count" id="c-stm">0</span></button>
       <button class="tab" role="tab" data-tier="mtm" aria-selected="true">MTM<span class="count" id="c-mtm">0</span></button>
       <button class="tab" role="tab" data-tier="ltm" aria-selected="false">LTM<span class="count" id="c-ltm">0</span></button>
+      <button class="tab" role="tab" data-tier="dreams" aria-selected="false">🌙 Dreams<span class="count" id="c-dreams">0</span></button>
     </div>
     <div id="entries"></div>
   </section>
@@ -108,7 +126,10 @@
 const I18N = {
   es: {
     title: "El agente que sueña", model: "modelo", newSession: "Nueva sesión", send: "Enviar",
-    dreamSoon: "Consolidación offline (próximamente)",
+    dreamTip: "Consolidación offline: fusiona, actualiza, promueve u olvida recuerdos",
+    dreaming: "soñando", dreamsEmpty: "Aún no hay sueños. Conversa un poco y pulsa 🌙 Dream.",
+    clusters: "grupos", proposed: "propuestas", applied: "aplicadas", rejected: "rechazadas",
+    originals: "originales", staleWarn: "posiblemente obsoleto", noChanges: "Sin cambios: la memoria ya estaba consolidada.",
     banner: "Modelo local vía Ollama · sin APIs externas · inspirado en LightMem",
     emptyChat: "Cuéntale algo sobre ti y luego pregúntale. La memoria aparece a la derecha: STM (conversación actual), MTM (hechos extraídos), LTM (conocimiento consolidado).",
     placeholder: "Escribe un mensaje…", thinking: "pensando", trace: "ver traza", hideTrace: "ocultar traza",
@@ -120,7 +141,10 @@ const I18N = {
   },
   en: {
     title: "The dreaming agent", model: "model", newSession: "New session", send: "Send",
-    dreamSoon: "Offline consolidation (coming soon)",
+    dreamTip: "Offline consolidation: merges, updates, promotes or forgets memories",
+    dreaming: "dreaming", dreamsEmpty: "No dreams yet. Chat a bit, then press 🌙 Dream.",
+    clusters: "clusters", proposed: "proposed", applied: "applied", rejected: "rejected",
+    originals: "originals", staleWarn: "possibly stale", noChanges: "No changes: memory was already consolidated.",
     banner: "Local model via Ollama · no external APIs · inspired by LightMem",
     emptyChat: "Tell it something about yourself, then ask. Memory shows on the right: STM (current conversation), MTM (extracted facts), LTM (consolidated knowledge).",
     placeholder: "Type a message…", thinking: "thinking", trace: "show trace", hideTrace: "hide trace",
@@ -235,11 +259,59 @@ function addReply(res) {
   freshIds = new Set(t.writer.entries.map((e) => e.id));
 }
 
+let dreams = [];
+
+function renderOp(a) {
+  const box = el("div", { className: `op ${a.op}` });
+  const arrow = a.new_tier ? ` → ${a.new_tier}` : "";
+  box.append(el("span", { className: "kind" }, `${a.op}${arrow}`));
+  if (a.op === "MERGE") {
+    box.append(el("div", { className: "add" }, a.new_text),
+      el("details", {}, el("summary", {}, `${a.targets.length} ${T("originals")}`),
+        a.targets.map((t) => el("div", { className: "del" }, `[${t.tier}] ${t.text}`))));
+  } else if (a.op === "FORGET") {
+    box.append(...a.targets.map((t) => el("div", { className: "del" }, t.text)));
+  } else {
+    box.append(...a.targets.map((t) => el("div", { className: "del" }, `[${t.tier}] ${t.text}`)),
+      el("div", { className: "add" }, a.new_text));
+  }
+  if (a.reason) box.append(el("div", { className: "why" }, a.reason));
+  return box;
+}
+
+function renderDream(d, open) {
+  const sb = d.stats_before, sa = d.stats_after;
+  const when = new Date(d.created_at || Date.now()).toLocaleTimeString();
+  const head = el("summary", {}, el("h3", { style: "display:inline" },
+    `🌙 ${when} · ${d.ops_applied.length} ${T("applied")}`));
+  const body = [
+    el("div", { className: "stats mono" },
+      `MTM ${sb.mtm}→${sa.mtm} · LTM ${sb.ltm}→${sa.ltm} · tokens ${sb.tokens}→${sa.tokens}`),
+    el("div", { className: "stats" },
+      `${fmtMs(d.duration_ms)} · ${d.clusters.length} ${T("clusters")} · ${d.llm_calls} ${T("calls")} · ` +
+      `${d.ops_proposed} ${T("proposed")} · ${d.ops_rejected.length} ${T("rejected")} · ${d.model}`),
+    d.ops_applied.length ? d.ops_applied.map(renderOp) : el("div", { className: "stats" }, T("noChanges")),
+    (d.warnings || []).map((w) => el("div", { className: "warnbox" }, `⚠ ${T("staleWarn")}: ${w.text}`)),
+    d.ops_rejected.length ? el("details", {}, el("summary", {}, `${d.ops_rejected.length} ${T("rejected")}`),
+      d.ops_rejected.map((r) => el("div", { className: "rej" },
+        el("span", { className: "mono" }, `${r.op} `), r.targets.join(" | "),
+        r.new_text ? el("div", {}, `→ ${r.new_text}`) : null,
+        el("div", { className: "warnbox" }, `✗ ${r.error}`)))) : null,
+  ];
+  return el("details", { className: "dream", open }, head, body);
+}
+
 function renderMemory() {
   if (!lastMemory) return;
   for (const k of ["stm", "mtm", "ltm"]) $(`#c-${k}`).textContent = lastMemory[k].length;
+  $("#c-dreams").textContent = dreams.length;
   const box = $("#entries");
   box.replaceChildren();
+  if (tier === "dreams") {
+    if (!dreams.length) { box.append(el("p", { className: "empty" }, T("dreamsEmpty"))); return; }
+    dreams.forEach((d, i) => box.append(renderDream(d, i === 0)));
+    return;
+  }
   const items = lastMemory[tier];
   if (!items.length) { box.append(el("p", { className: "empty" }, T(`${tier}Empty`))); return; }
   if (tier === "stm") {
@@ -256,16 +328,19 @@ function renderMemory() {
 }
 
 async function refreshMemory() {
-  lastMemory = await api(`/memory?session_id=${encodeURIComponent(sessionId)}`);
+  [lastMemory, { dreams }] = await Promise.all([
+    api(`/memory?session_id=${encodeURIComponent(sessionId)}`), api("/dreams")]);
+  renderMemory();
+}
+
+function selectTab(name) {
+  tier = name;
+  for (const x of document.querySelectorAll(".tab")) x.setAttribute("aria-selected", x.dataset.tier === name);
   renderMemory();
 }
 
 for (const b of document.querySelectorAll(".tab")) {
-  b.onclick = () => {
-    tier = b.dataset.tier;
-    for (const x of document.querySelectorAll(".tab")) x.setAttribute("aria-selected", x === b);
-    renderMemory();
-  };
+  b.onclick = () => selectTab(b.dataset.tier);
 }
 
 $("#form").onsubmit = async (ev) => {
@@ -303,6 +378,25 @@ $("#newSession").onclick = async () => {
   addMsg("bot", T("newSessionDone"), "");
   freshIds = new Set();
   await refreshMemory();
+};
+
+$("#dream").onclick = async () => {
+  const btn = $("#dream"), send = $("#send");
+  btn.disabled = send.disabled = true;
+  const t0 = performance.now();
+  const timer = setInterval(() => { btn.textContent = `🌙 ${T("dreaming")}… ${((performance.now() - t0) / 1000).toFixed(0)} s`; }, 500);
+  try {
+    await api("/dream", {});
+    freshIds = new Set();
+    await refreshMemory();
+    selectTab("dreams");
+  } catch (e) {
+    addMsg("bot", `⚠️ ${e.message}`, "err");
+  } finally {
+    clearInterval(timer);
+    btn.textContent = "🌙 Dream";
+    btn.disabled = send.disabled = false;
+  }
 };
 
 $("#model").onchange = async (ev) => {

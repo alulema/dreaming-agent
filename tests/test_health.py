@@ -80,3 +80,25 @@ def test_chat_memory_session_reset_endpoints(client):
 def test_index_served(client):
     r = client.get("/")
     assert r.status_code == 200 and "El agente que sueña" in r.text
+
+
+def test_dream_endpoints(client):
+    import numpy as np
+
+    from app.memory.embed import Embedder, to_bytes
+    from app.memory.models import MemoryEntry
+    from tests.fakes import FakeLLM, fake_vector
+
+    state = client.app.state
+    for t, turn in (("The user has a cat named Mia", "t1"), ("The user's cat is Mia", "t2")):
+        state.store.add_entry(MemoryEntry(text=t, entities=["Mia"], source_turn_ids=[turn],
+                                          embedding=to_bytes(np.array(fake_vector("#cat")))))
+    fake = FakeLLM().script("consolidator", {"ops": [
+        {"op": "MERGE", "targets": ["M1", "M2"], "new_text": "The user has a cat named Mia",
+         "reason": "same"}]})
+    state.llm, state.embedder = fake, Embedder(fake, "fake")
+
+    diff = client.post("/dream").json()
+    assert [a["op"] for a in diff["ops_applied"]] == ["MERGE"]
+    assert client.get("/dreams").json()["dreams"][0]["dream_id"] == diff["dream_id"]
+    assert client.get("/memory").json()["stats"]["ltm"] == 1

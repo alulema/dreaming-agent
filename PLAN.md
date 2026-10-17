@@ -47,15 +47,17 @@ Regla: **no se avanza de fase sin cumplir sus criterios de aceptación.** Cada f
 - `static/index.html`: chat + "ver traza" + pestañas STM/MTM/LTM; `demo-theme.css` con fallback de tokens; banner
 - **✅ Aceptación:** `scripts/demo_conversation.py` (10 turnos) genera entradas MTM razonables (revisión manual en LOG) y la traza muestra la latencia por etapa
 
-## Fase 3 — Dream
+## Fase 3 — Dream ✅ (2026-10-17)
 - `dream/cluster.py`: grafo con aristas por coseno > umbral **o** entidades/temas compartidos (⚠️ hallazgo de la Fase 1: los UPDATE puntúan 0.74–0.76 con bge-m3, por debajo de 0.80; probar 0.70–0.72 y temas normalizados del Writer, tipo `user.location`); componentes conexos; partir los que superen `MAX_CLUSTER_SIZE`; incluir las LTM vecinas como contexto (para detectar UPDATE contra LTM)
 - `dream/consolidator.py`: prompt `consolidator.md` → `list[Op]`
 - `dream/validator.py` (**puro**): ids existentes y activos; MERGE con ≥2 ids del mismo tier; `new_text` obligatorio en MERGE/UPDATE/PROMOTE; PROMOTE solo desde MTM con ≥2 turnos de origen o `access_count ≥ umbral`; FORGET nunca sobre LTM; conflictos entre ops del mismo Dream (un id tocado dos veces → se rechaza la segunda)
 - `dream/applier.py`: transacción, snapshot antes y después, soft-delete y `superseded_by`; devuelve el diff de §3.4
 - `/dream`, `/dreams` y panel de diff en la UI (verde / rojo tachado / amarillo con originales colapsados)
+- **Cambios respecto al plan** (ver LOG): umbral 0.75 + temas/entidades; MERGE/UPDATE con evidencia → LTM directo; validator con grounding (nombres/números), preservación del valor vigente y avisos "possibly stale"; el resultado hereda el `created_at` del hecho
 - **✅ Aceptación:** tests del validator (ids inexistentes, FORGET sobre LTM, MERGE de un id, etc.) y del applier; un segundo Dream seguido produce ≤ 20 % de las ops del primero
 
 ## Fase 4 — Benchmark
+- **Lecciones de las fases 2–3 que entran aquí:** ninguna entidad de los ejemplos de los prompts en `bench/` (test automático); 3 corridas obligatorias (no hay determinismo completo con temp 0 + seed); medir también los rechazos por tipo y los avisos de obsolescencia; las entradas compuestas del Writer son una variable a vigilar
 - `app/pipeline/strategies.py`: A (solo STM), B (RAG ingenuo sobre turnos crudos), C (pipeline), D (C + Dream al cerrar cada sesión). **Mismo código que la app**
 - `bench/sessions/01..08.json`: usuario ficticio. Incluye paráfrasis (MERGE), cambios (UPDATE: mudanza, trabajo, preferencia invertida), ruido (FORGET) y mezcla ES/EN. **Las revisa Alexis**
 - `bench/questions.json`: 28 preguntas (6 single, 6 updated, 6 multi, 5 temporal, 5 abstention) con `expected_keywords`, `forbidden_keywords` y categoría

@@ -33,10 +33,16 @@ class Settings(BaseSettings):
     writer_dedup_threshold: float = 0.95
 
     # Dream
-    cluster_threshold: float = 0.80
+    # Spec default was 0.80; with bge-m3, contradictions ("lives in X" vs "moved to Y") score
+    # 0.74-0.76, so they would never meet. Shared topics also link entries. See LOG.md.
+    cluster_threshold: float = 0.75
     max_cluster_size: int = 8
+    max_ltm_context: int = 5
     promote_min_access: int = 3
     promote_min_turns: int = 2
+    # MERGE/UPDATE results that meet the PROMOTE evidence rule are born in LTM.
+    merge_promotes: bool = True
+    max_entry_chars: int = 300
 
     # Demo metadata (injected by the hosting environment, optional)
     project_id: str = ""
