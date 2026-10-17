@@ -52,3 +52,35 @@ Prompt tipo Controller ("¿Te acuerdas cómo se llama mi perro?"), temperatura 0
 
   **nomic-embed-text no sirve** para sesiones que mezclan ES/EN: queda descartado como alternativa. Para el demo público (con poca RAM) hay que buscar otro embedding multilingüe más liviano (candidatos: `paraphrase-multilingual-MiniLM-L12-v2`, ya usado en rag-blogposts, o algún embedding multilingüe pequeño de Ollama). Se decide en la Fase 5 midiendo.
 - **[RESULTADO]** ✅ Fase 0 completa. Ollama 0.40.2 sirve chat con JSON Schema y embeddings; el entorno Python queda listo.
+
+## 2026-10-16 19:45 — Fase 1: esqueleto (llm.py, store, /health)
+
+- **[DECISIÓN]** `llm.py` → `OllamaClient.chat_json(module, messages, schema, fallback)`:
+  - **Nunca lanza** si el modelo se porta mal: devuelve el fallback con la causa.
+  - Reintenta **solo** el JSON inválido (`json_retries=1`). Un timeout **no** se reintenta, porque duplicaría una latencia que ya se pasó del presupuesto.
+  - Contadores por módulo: `ok / invalid_json / timeout / http_error / fallback` y ms. Son los números del post.
+  - `chat_text` (Responder) sí propaga errores: no existe un fallback determinista sensato para una respuesta.
+- **[DECISIÓN]** `MemoryEntry` añade `status: active|superseded|forgotten` a lo que pide la spec. `superseded_by` dice *quién* reemplaza; `status` cubre el soft-delete de FORGET, que no tiene sucesor.
+- **[DECISIÓN]** `SQLiteStore`: una conexión con `RLock` y transacciones anidables (solo la más externa hace commit o rollback, cubierto por test). Búsqueda coseno por fuerza bruta en numpy. Las tablas `turns` guardan embedding opcional para el baseline B (RAG ingenuo).
+- **[DESAFÍO]** Los tests de `/health` fallaban con `respx`: el `TestClient` de Starlette usa su propio transporte ASGI, así que una ruta de "pass-through" para `testserver` nunca se llamaba y `assert_all_called` fallaba. Solución: mockear solo la ruta de Ollama; el TestClient no pasa por respx.
+- **[DESAFÍO]** `scripts/*.py` no podía importar `app` (el proyecto no se instala como paquete). Solución: ejecutarlos como módulo desde la raíz: `uv run python -m scripts.<nombre>`.
+- **[RESULTADO]** 24 tests en verde (`llm`: válido, retry→ok, inválido→fallback, timeout sin retry, http error, schema enviado como `format`; `store`: CRUD, coseno con filtros de tier/estado, `touch`, ventana STM, rollback anidado, snapshot/stats/reset, persistencia en disco; `/health`: ok, degradado y Ollama caído). `ruff` limpio. `/health` contra Ollama real → `status: ok` con qwen2.5:7b + bge-m3.
+
+### [HALLAZGO] El umbral de clustering 0.80 de la spec dejaría fuera justo los UPDATE
+
+`scripts/probe_similarity.py`, coseno con bge-m3:
+
+| Par | Coseno |
+|---|---|
+| Paráfrasis ES/ES · ES/EN · forma "the user…" | 0.977 · 0.970 · 0.978 |
+| Mismo tema, hecho distinto ("dog named Toby" vs "dog is a beagle") | **0.810** |
+| **Actualización** de ciudad ("lives in Quito" vs "moved to Madrid") | **0.742** |
+| **Actualización** de trabajo ("nurse" vs "now data analyst") | **0.757** |
+| No relacionados (EN/EN · ES/EN) | 0.576 · 0.484 |
+
+- Con el umbral de 0.80 se agruparían las paráfrasis (MERGE ✅) y "mismo tema, otro hecho" (riesgo de **falso MERGE**), pero **no** las contradicciones (0.74–0.76). El Consolidator nunca vería juntos "vivo en Quito" y "me mudé a Madrid" → **ningún UPDATE**.
+- Implicaciones para la Fase 3:
+  1. Las aristas por **entidades compartidas** (spec §3.3) no son opcionales: son el único camino para que un UPDATE llegue al Consolidator. Ojo: "Quito" y "Madrid" no comparten entidad; lo compartido es el *atributo* (residencia). Habrá que pedir al Writer entidades/temas normalizados (p. ej. `user.location`), o bajar el umbral.
+  2. Probar umbrales de ~0.70 a 0.72: atrapan los UPDATE y dejan fuera lo no relacionado (<0.58), a cambio de clusters más grandes (vigilar `MAX_CLUSTER_SIZE`).
+  3. Estas son frases sintéticas; hay que **re-medir con lo que realmente escriba el Writer** en la Fase 2.
+- La recuperación cruzada ES→EN funciona: las 4 consultas encuentran el hecho correcto en el top-1, con 0.59–0.71 frente a 0.46–0.51 del segundo. Ojo con cualquier umbral absoluto de recuperación: un acierto real puede puntuar solo ~0.6.

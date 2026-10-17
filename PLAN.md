@@ -29,7 +29,7 @@ Regla: **no se avanza de fase sin cumplir sus criterios de aceptación.** Cada f
 - [x] Primer commit
 - [ ] **Alexis:** confirmar `docs/paper-notes.md` contra el paper
 
-## Fase 1 — Esqueleto
+## Fase 1 — Esqueleto ✅ (2026-10-16)
 - `app/config.py`: settings desde el entorno (`LLM_MODEL`, `EMBED_MODEL`, `OLLAMA_URL`, `DB_PATH`, `STM_TURNS=6`, `TOP_K=8`, `CLUSTER_THRESHOLD=0.80`, `PROMOTE_MIN_ACCESS`, timeouts y seed)
 - `app/llm.py`: `OllamaClient.chat_json(module, messages, schema, fallback, timeout)`. Usa `format=<schema>`, valida con Pydantic, hace 1 reintento y luego el fallback. Contadores por módulo (`ok`, `invalid_json`, `timeout`, `fallback`) y latencia
 - `app/memory/models.py`: `MemoryEntry`, `Op`, `Turn`, DTOs de la API
@@ -47,7 +47,7 @@ Regla: **no se avanza de fase sin cumplir sus criterios de aceptación.** Cada f
 - **✅ Aceptación:** `scripts/demo_conversation.py` (10 turnos) genera entradas MTM razonables (revisión manual en LOG) y la traza muestra la latencia por etapa
 
 ## Fase 3 — Dream
-- `dream/cluster.py`: grafo con aristas por coseno > umbral o entidades compartidas; componentes conexos; partir los que superen `MAX_CLUSTER_SIZE`; incluir las LTM vecinas como contexto (para detectar UPDATE contra LTM)
+- `dream/cluster.py`: grafo con aristas por coseno > umbral **o** entidades/temas compartidos (⚠️ hallazgo de la Fase 1: los UPDATE puntúan 0.74–0.76 con bge-m3, por debajo de 0.80; probar 0.70–0.72 y temas normalizados del Writer, tipo `user.location`); componentes conexos; partir los que superen `MAX_CLUSTER_SIZE`; incluir las LTM vecinas como contexto (para detectar UPDATE contra LTM)
 - `dream/consolidator.py`: prompt `consolidator.md` → `list[Op]`
 - `dream/validator.py` (**puro**): ids existentes y activos; MERGE con ≥2 ids del mismo tier; `new_text` obligatorio en MERGE/UPDATE/PROMOTE; PROMOTE solo desde MTM con ≥2 turnos de origen o `access_count ≥ umbral`; FORGET nunca sobre LTM; conflictos entre ops del mismo Dream (un id tocado dos veces → se rechaza la segunda)
 - `dream/applier.py`: transacción, snapshot antes y después, soft-delete y `superseded_by`; devuelve el diff de §3.4

@@ -1,9 +1,8 @@
 """Phase 0 smoke test: Ollama chat with JSON-schema structured output, and embeddings.
 
-Usage: uv run python scripts/smoke_ollama.py [llm_model] [embed_model]
+Usage: uv run python -m scripts.smoke_ollama [llm_model] [embed_model]
 """
 
-import json
 import sys
 import time
 
