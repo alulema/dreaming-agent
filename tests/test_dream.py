@@ -322,3 +322,19 @@ async def test_dream_rolls_back_if_apply_fails(store, monkeypatch):
     with pytest.raises(RuntimeError):
         await run_dream(store, Embedder(llm, "fake"), llm, Settings(db_path=":memory:"))
     assert sorted(e.text for e in store.list_entries()) == sorted([a.text, b.text])
+
+
+def test_forget_protection_v2():
+    rules = Rules(protect_from_forget=True)
+    allergy = mk("The user is allergic to peanuts", kind="fact", topics=["user.health"])
+    course = mk("The user took an online course", kind="event", topics=["user.education"])
+    umbrella = mk("The user forgot their umbrella today", kind="event", topics=["other"])
+
+    def err(e):
+        _, rej = validate_ops([Op(op="FORGET", target_ids=[e.id])], by_id(e), rules)
+        return rej[0].error if rej else None
+
+    assert "non-event" in err(allergy)
+    assert "protected topic" in err(course)
+    assert err(umbrella) is None
+    assert check(Op(op="FORGET", target_ids=[allergy.id]), allergy) is None  # v1 rules allow it

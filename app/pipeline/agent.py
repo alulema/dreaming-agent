@@ -13,7 +13,7 @@ from app.pipeline.controller import run_controller
 from app.pipeline.prompts import load_prompt
 from app.pipeline.responder import run_responder
 from app.pipeline.retriever import retrieve
-from app.pipeline.selector import run_selector
+from app.pipeline.selector import Selection, filter_context, run_selector
 from app.pipeline.writer import run_writer
 
 PROMPT_NAMES = ("controller", "selector", "responder", "writer")
@@ -67,17 +67,28 @@ class Agent:
         if decision.repairs:
             repairs["controller"] = decision.repairs
 
-        # 2-3. Retriever + Selector (skipped when the Controller says memory isn't needed)
+        # 2-3. Retriever + Selector. In "controller" mode they are skipped when the Controller
+        # says memory isn't needed; in "always" mode the user's message becomes the query.
         candidates, selection = [], None
-        if decision.out.needs_memory:
+        queries, tiers = decision.out.queries, decision.out.tiers
+        forced = s.retrieval_mode == "always" and not decision.out.needs_memory
+        if forced:
+            queries, tiers = [message], ["MTM", "LTM"]
+        if decision.out.needs_memory or forced:
             t0 = time.perf_counter()
-            candidates = await retrieve(
-                self.store, self.embedder, decision.out.queries, decision.out.tiers, s.top_k
-            )
+            candidates = await retrieve(self.store, self.embedder, queries, tiers, s.top_k)
             tick("retriever", t0)
 
             t0 = time.perf_counter()
-            selection = await run_selector(self.llm, message, candidates, s.selector_fallback_k)
+            if forced and s.selector_mode == "filter":
+                # The Controller saw no need for memory: skip the Selector's LLM call and pass
+                # the best-scored entries as light background.
+                kept, context = filter_context([], candidates, s.selector_min_keep)
+                selection = Selection(kept=kept, context=context, result=None, repairs=[])
+            else:
+                selection = await run_selector(
+                    self.llm, message, candidates, s.selector_fallback_k,
+                    mode=s.selector_mode, min_keep=s.selector_min_keep)
             tick("selector", t0)
             if selection.result is not None:
                 llm_calls += len(selection.result.attempts)
@@ -106,7 +117,7 @@ class Agent:
         t0 = time.perf_counter()
         written = None
         if learn and decision.out.shares_new_info:
-            written = await run_writer(self.llm, message)
+            written = await run_writer(self.llm, message, grounding=s.writer_grounding)
             llm_calls += len(written.result.attempts)
             if written.result.fallback_used:
                 fallbacks.append("writer")
@@ -140,7 +151,8 @@ class Agent:
             "session_id": session_id,
             "turn_id": user_turn.id,
             "model": self.llm.model,
-            "controller": {**decision.out.model_dump(), **_llm_info(decision.result)},
+            "controller": {**decision.out.model_dump(), **_llm_info(decision.result),
+                           "forced_retrieval": forced},
             "retrieval": {
                 "candidates": [
                     {"id": c.entry.id, "tier": c.entry.tier, "text": c.entry.text,

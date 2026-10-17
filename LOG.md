@@ -247,3 +247,23 @@ La pregunta del post ("¿la consolidación offline ayuda a un modelo pequeño?")
 - **Falso negativo:** "I don't have information about your blood type" no se detectaba como abstención → más frases.
 - La primera versión de la regla ("cualquier abstención anula") rompió un acierto ("…Montevideo. No mencionaste otras ciudades.") → por eso se mira solo la primera frase. Tres iteraciones del scoring: el scoring por keywords necesita revisión manual, como avisaba la spec.
 - Preguntas que fallan en *todas* las condiciones, incluida B: q22 ("¿Qué mascota tenía antes de adoptar a Ramón?"), que los modelos leen como "¿qué mascota *reemplazó* Ramón?" (pregunta ambigua, mal diseñada por mí), y q13 (3 deportes en 4 sesiones).
+
+## 2026-10-17 06:00 — Fase 4: v2, correcciones dirigidas por el diagnóstico de v1
+
+Todas son **flags de configuración** (v1 sigue siendo reproducible con `RETRIEVAL_MODE=controller SELECTOR_MODE=compress WRITER_GROUNDING=false PROTECT_FROM_FORGET=false`):
+
+| Problema en v1 | Cambio v2 | Flag |
+|---|---|---|
+| El Controller no buscaba en "¿qué idioma aprendo?" | **Siempre se recupera**; si el Controller dice que no hace falta, la query es el mensaje y se usan los 3 mejores sin llamar al Selector (no se paga una llamada extra en los turnos de enunciado) | `RETRIEVAL_MODE=always` |
+| El Selector se quedaba con 1 hecho donde hacían falta 2, y su resumen perdía detalles | El Responder recibe los **textos originales** de lo que conservó el Selector (con fecha, en orden cronológico), completados hasta 3 con los mejores candidatos; el resumen se descarta | `SELECTOR_MODE=filter`, `SELECTOR_MIN_KEEP=3` |
+| El Writer de 3B copiaba los ejemplos del prompt ("lives in Bilbao") | **Grounding del Writer:** nombres y números de cada entrada deben aparecer en el mensaje del usuario, con tolerancia a traducción (Lisbon/Lisboa 0.83, Japan/Japón 0.8, "dos horas" → 2, meses en inglés). Módulo común `app/memory/grounding.py`, compartido con el Validator | `WRITER_GROUNDING=true` |
+| El Dream olvidó la alergia, el curso y el viaje | **FORGET solo de eventos** (`kind=event`) sin temas protegidos (nombre, ubicación, trabajo, familia, amigos, mascotas, salud, educación, viajes, planes) | `PROTECT_FROM_FORGET=true` |
+
+- **[HALLAZGO] Límite conocido del grounding:** "The user works as a **teacher**" (fuga del ejemplo de Iker) *no* se detecta: un sustantivo común en minúscula no puede verificarse entre idiomas sin traducir. Solo se atrapan nombres propios y números.
+- **[DECISIÓN] Sin arreglo para "name is Kiwi":** el error es semántico (el nombre "Kiwi" *sí* está en el mensaje). Cualquier regla específica ("solo crear user.name si el mensaje dice 'me llamo'") sería sobreajustar al caso visto en el bench. Queda como fallo conocido del Writer y el Dream.
+- **[DECISIÓN] Metodología:** los cambios se validan con los escenarios de desarrollo (Lucía) antes de tocar el bench. En v2 se re-corren las 4 condiciones (A y B no cambian de código, pero así sus latencias se miden con el Mac despierto) y el bench se lanza envuelto en `caffeinate`. Cada registro JSONL lleva ahora timestamp.
+- 100 tests en verde (+7 de v2).
+- **[RESULTADO] Validación de v2 con datos de desarrollo** (Lucía; nada del bench):
+  - 7B, conversación de 10 turnos: todos los hechos guardados; respuestas de memoria correctas; turnos de enunciado con 3 llamadas (el Selector no corre en las recuperaciones forzadas).
+  - 7B, escenario Dream: tras el Dream, la pregunta final ahora acierta también "bebes café por las mañanas" (en v1 se abstenía): el modo `filter` le pasa al Responder más hechos crudos. Idempotencia [2, 1], como en v1 (n pequeño).
+  - **3B:** sin fugas de ejemplos visibles, pero la compuerta sigue perdiendo hechos (nombre, perro) y **el Dream de 3B es dañino**: "The user lives **in the park**" (de "saqué a pasear a Toby por el parque") se consolidó como UPDATE de la ciudad; y "no longer likes coffee" + "no longer likes their previous job" → UPDATE sin sentido. Las reglas no lo atrapan porque está todo "grounded".

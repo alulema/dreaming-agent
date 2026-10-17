@@ -98,6 +98,7 @@ async def run_one(condition: str, model: str, run: int, args, sessions, question
     out = (RESULTS / f"{run_id}.jsonl").open("w", encoding="utf-8")
 
     def emit(record: dict) -> None:
+        record = {"ts": datetime.now().isoformat(timespec="seconds"), **record}
         out.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
         out.flush()
 

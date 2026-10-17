@@ -28,6 +28,18 @@ class Settings(BaseSettings):
     stm_turns: int = 6
     top_k: int = 8
     selector_fallback_k: int = 3
+    # v1 behaviour: "controller" + "compress" + writer_grounding=False. v2 defaults below
+    # come from the v1 benchmark diagnosis (docs/RESULTS.md):
+    # "always": retrieve on every turn, even when the Controller says memory isn't needed
+    # (it skipped "what language am I learning?"); the Controller still writes the queries.
+    retrieval_mode: Literal["controller", "always"] = "always"
+    # "compress": Responder gets the Selector's summary. "filter": Responder gets the original
+    # texts of the kept entries (dated, chronological), topped up to `selector_min_keep` with
+    # the best-scored candidates (the Selector kept one fact where two were needed).
+    selector_mode: Literal["compress", "filter"] = "filter"
+    selector_min_keep: int = 3
+    # Drop Writer entries with names/numbers absent from the user's message (prompt leakage).
+    writer_grounding: bool = True
     # A new Writer entry this similar to an active MTM entry is not stored again: its turn is
     # added to the existing entry's sources instead (reinforcement). > 1.0 disables it.
     writer_dedup_threshold: float = 0.95
@@ -42,6 +54,8 @@ class Settings(BaseSettings):
     promote_min_turns: int = 2
     # MERGE/UPDATE results that meet the PROMOTE evidence rule are born in LTM.
     merge_promotes: bool = True
+    # FORGET only one-off events whose topics are all outside this set (v1 forgot an allergy).
+    protect_from_forget: bool = True
     max_entry_chars: int = 300
 
     # Demo metadata (injected by the hosting environment, optional)

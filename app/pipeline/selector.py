@@ -35,8 +35,25 @@ def fallback_context(kept: list[Candidate]) -> str:
     return "\n".join(f"- {c.entry.text}" for c in kept)
 
 
+def filter_context(kept: list[Candidate], candidates: list[Candidate], min_keep: int) -> tuple[
+        list[Candidate], str]:
+    """`filter` mode: the Responder gets the original entries, not a summary. The kept set is
+    topped up with the best-scored candidates to `min_keep` (v1: the Selector kept a single
+    fact for questions that needed two), and shown in chronological order with dates."""
+    chosen = list(kept)
+    for c in candidates:
+        if len(chosen) >= min_keep:
+            break
+        if c not in chosen:
+            chosen.append(c)
+    chosen.sort(key=lambda c: (c.entry.created_at, c.entry.id))
+    return chosen, "\n".join(f"- ({c.entry.created_at:%Y-%m-%d %H:%M}) {c.entry.text}"
+                              for c in chosen)
+
+
 async def run_selector(
-    llm: OllamaClient, message: str, candidates: list[Candidate], fallback_k: int
+    llm: OllamaClient, message: str, candidates: list[Candidate], fallback_k: int,
+    mode: str = "compress", min_keep: int = 3,
 ) -> Selection:
     if not candidates:
         return Selection(kept=[], context="", result=None, repairs=[])
@@ -58,6 +75,9 @@ async def run_selector(
     if len(valid) != len(positions):
         repairs.append("out_of_range_keep")
     kept = [candidates[p - 1] for p in valid]
+    if mode == "filter":
+        kept, context = filter_context(kept, candidates, min_keep)
+        return Selection(kept=kept, context=context, result=result, repairs=repairs)
     context = result.value.context.strip()
     if kept and not context:
         context = fallback_context(kept)

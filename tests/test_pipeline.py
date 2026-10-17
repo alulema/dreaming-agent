@@ -154,7 +154,7 @@ async def test_agent_statement_turn_writes_mtm(store):
                      "entities": ["Toby"], "topics": ["user.pets"]}],
     })
     llm.text_replies.append("Nice!")
-    res = await make_agent(store, llm).chat("s1", "My dog is Toby")
+    res = await make_agent(store, llm, retrieval_mode="controller").chat("s1", "My dog is Toby")
     assert res.reply == "Nice!"
     t = res.trace
     assert t["selector"] is None and t["llm_calls"] == 3 and t["fallbacks"] == []
@@ -171,7 +171,7 @@ async def test_agent_question_turn_retrieves_and_skips_writer(store):
     llm = FakeLLM().script("controller", ctrl(False, True, ["#dog name"])).script(
         "selector", {"keep": [1], "context": "The dog is Toby."}
     )
-    res = await make_agent(store, llm).chat("s1", "What's my dog called?")
+    res = await make_agent(store, llm, selector_mode="compress").chat("s1", "What's my dog called?")
     t = res.trace
     assert t["writer"]["skipped"] and t["llm_calls"] == 3
     assert t["selector"]["kept_ids"] == [dog.id]
@@ -212,3 +212,43 @@ async def test_agent_stm_window(store):
     responder_msgs = [m for mod, m in llm.calls if mod == "responder"][-1]
     # system + 2 STM turns + current message
     assert len(responder_msgs) == 4 and responder_msgs[-1]["content"] == "m2"
+
+
+# --- v2 options ---
+
+def test_writer_grounding_drops_leaked_names_but_keeps_translations():
+    out = WriterOut(has_new_facts=True, entries=[
+        w("The user lives in Bilbao"),                       # leaked from a prompt example
+        w("The user has a parrot named Kiwi"),
+        w("The user's sister lives in Lisbon"),              # Lisboa in the message
+        w("The user is 34 years old"),                       # invented number
+    ])
+    msg = "Tengo un loro que se llama Kiwi y mi hermana vive en Lisboa"
+    kept, dropped = clean(out, msg)
+    assert [e.text for e in kept] == ["The user has a parrot named Kiwi",
+                                      "The user's sister lives in Lisbon"]
+    assert dropped == 2
+    assert len(clean(out)[0]) == 4                           # grounding off (v1)
+
+
+async def test_selector_filter_mode_tops_up_and_orders(store):
+    cs = cands(store, "#a", "#b", "#c", "#d")
+    for i, c in enumerate(cs):
+        c.entry.created_at = c.entry.created_at.replace(year=2026 - i)  # #d oldest
+    llm = FakeLLM().script("selector", {"keep": [2], "context": "compressed"})
+    sel = await run_selector(llm, "q", cs, fallback_k=3, mode="filter", min_keep=3)
+    assert [c.entry.text for c in sel.kept] == ["#c", "#b", "#a"]   # top-up, chronological
+    assert "compressed" not in sel.context and sel.context.count("\n") == 2
+
+
+async def test_agent_always_retrieves_in_v2(store):
+    dog = add(store, "#dog The user's dog is Toby")
+    llm = FakeLLM().script("controller", ctrl(False, False))
+    res = await make_agent(store, llm, retrieval_mode="always").chat("s1", "#dog what?")
+    assert res.trace["controller"]["forced_retrieval"]
+    assert res.trace["selector"]["kept_ids"] == [dog.id]
+    assert res.trace["selector"]["skipped"]                  # no Selector LLM call when forced
+    assert [m for m, _ in llm.calls] == ["controller", "responder"]
+    llm2 = FakeLLM().script("controller", ctrl(False, False))
+    res2 = await make_agent(store, llm2, retrieval_mode="controller").chat("s1", "#dog what?")
+    assert res2.trace["selector"] is None

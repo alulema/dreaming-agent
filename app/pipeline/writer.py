@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
 from app.llm import LLMResult, OllamaClient
+from app.memory.grounding import ungrounded
 from app.memory.models import EntryKind, Topic
 from app.pipeline.prompts import load_prompt
 
@@ -36,7 +37,9 @@ _META = re.compile(r"^the user (asked|asks|is asking|said|says|greeted|greets|th
                    re.IGNORECASE)
 
 
-def clean(out: WriterOut) -> tuple[list[WriterEntry], int]:
+def clean(out: WriterOut, source: str | None = None) -> tuple[list[WriterEntry], int]:
+    """`source`: the user's message; when given, entries with names or numbers that are not
+    in it are dropped (v1/3B: "The user lives in Bilbao" from "Tengo un loro…")."""
     if not out.has_new_facts:
         return [], len(out.entries)
     seen: set[str] = set()
@@ -45,6 +48,8 @@ def clean(out: WriterOut) -> tuple[list[WriterEntry], int]:
         text = " ".join(e.text.split())
         key = text.lower().rstrip(".")
         if not text or key in seen or _META.match(text):
+            continue
+        if source is not None and ungrounded(text, source, fuzzy=True):
             continue
         seen.add(key)
         kept.append(e.model_copy(update={
@@ -55,7 +60,7 @@ def clean(out: WriterOut) -> tuple[list[WriterEntry], int]:
     return kept, len(out.entries) - len(kept)
 
 
-async def run_writer(llm: OllamaClient, message: str) -> WriterResult:
+async def run_writer(llm: OllamaClient, message: str, *, grounding: bool = False) -> WriterResult:
     """Sees only the user's message. With the assistant's reply (run 1) or the previous
     assistant message (run 2) in view, the 7B kept re-extracting facts the assistant had just
     recited from memory ("echo" duplicates). See LOG.md, Phase 2."""
@@ -66,5 +71,5 @@ async def run_writer(llm: OllamaClient, message: str) -> WriterResult:
         WriterOut,
         fallback=lambda: WriterOut(has_new_facts=False, entries=[]),
     )
-    entries, dropped = clean(result.value)
+    entries, dropped = clean(result.value, message if grounding else None)
     return WriterResult(entries=entries, result=result, dropped=dropped)

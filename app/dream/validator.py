@@ -5,10 +5,21 @@ that reuses an id is rejected as a conflict.
 """
 
 import re
-import unicodedata
 from dataclasses import dataclass
 
+from app.memory.grounding import NAME as _NAME
+from app.memory.grounding import NUMBER as _NUMBER
+from app.memory.grounding import STOP as _STOP
+from app.memory.grounding import fold as _fold
+from app.memory.grounding import ungrounded
 from app.memory.models import MemoryEntry, Op
+
+# Facts about who the user is. v1: the Dream forgot "The user is allergic to peanuts", an online
+# course and a trip, all stated once, so the "reinforced" guard did not protect them.
+PROTECTED_TOPICS = frozenset({
+    "user.name", "user.location", "user.job", "user.family", "user.friends", "user.pets",
+    "user.health", "user.education", "user.travel", "user.plans",
+})
 
 
 @dataclass(frozen=True)
@@ -16,6 +27,7 @@ class Rules:
     promote_min_turns: int = 2
     promote_min_access: int = 3
     max_entry_chars: int = 300
+    protect_from_forget: bool = False
 
 
 @dataclass
@@ -31,26 +43,14 @@ def has_evidence(entries: list[MemoryEntry], rules: Rules) -> bool:
             or sum(e.access_count for e in entries) >= rules.promote_min_access)
 
 
-def _fold(text: str) -> str:
-    text = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in text if not unicodedata.combining(c)).lower()
-
-
-# Capitalised words (not sentence-initial "The") and numbers: the details a model can invent.
-_NAME = re.compile(r"(?<![.!?]\s)(?<!^)\b([A-ZÁÉÍÓÚÑ][\wáéíóúñü]+)")
-_NUMBER = re.compile(r"\d+")
-_STOP = {"the", "user", "user's", "users"}
-
-
 def ungrounded_terms(new_text: str, targets: list[MemoryEntry]) -> list[str]:
     """Names and numbers in `new_text` that appear in none of the target entries.
 
     Catches prompt-example leakage (Phase 3: the 7B proposed "The user lives in Bilbao
     (previously lived in Lima)", copied from the Consolidator's own example) and invented
     details. Deliberately strict: it grounds against the targets only, not the whole cluster."""
-    source = _fold(" ".join([e.text for e in targets] + [x for e in targets for x in e.entities]))
-    found = _NAME.findall(new_text) + _NUMBER.findall(new_text)
-    return [t for t in dict.fromkeys(found) if _fold(t) not in _STOP and _fold(t) not in source]
+    source = " ".join([e.text for e in targets] + [x for e in targets for x in e.entities])
+    return ungrounded(new_text, source)
 
 
 def _mentions(text: str, term: str) -> bool:
@@ -120,6 +120,11 @@ def check_op(op: Op, targets: list[MemoryEntry], rules: Rules) -> str | None:
         reinforced = [e for e in targets if len(e.source_turn_ids) >= rules.promote_min_turns]
         if reinforced:
             return "FORGET of a reinforced entry (stated in several turns)"
+        if rules.protect_from_forget:
+            if any(e.kind != "event" for e in targets):
+                return "FORGET of a non-event entry (only one-off events may be forgotten)"
+            if hit := sorted({t for e in targets for t in e.topics} & PROTECTED_TOPICS):
+                return f"FORGET of a protected topic: {hit}"
     return None
 
 

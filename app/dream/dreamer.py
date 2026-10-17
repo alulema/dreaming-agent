@@ -16,7 +16,8 @@ from app.memory.store import MemoryStore
 def rules_from(settings: Settings) -> Rules:
     return Rules(promote_min_turns=settings.promote_min_turns,
                  promote_min_access=settings.promote_min_access,
-                 max_entry_chars=settings.max_entry_chars)
+                 max_entry_chars=settings.max_entry_chars,
+                 protect_from_forget=settings.protect_from_forget)
 
 
 async def run_dream(
